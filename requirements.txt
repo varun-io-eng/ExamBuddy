@@ -1,73 +1,33 @@
-# ════════════════════════════════════════════════════════════════════
-# Exam Buddy Pro - Complete Requirements
-# ════════════════════════════════════════════════════════════════════
+# ─────────────────────────────────────────────────────────────
+# Exam Buddy Pro — requirements.txt
+# Optimised for fast Streamlit Cloud cold-start
+#
+# HEAVY OPTIONAL DEPS (torch, chromadb, sentence-transformers)
+# are intentionally excluded — the app falls back automatically:
+#   DKT          → numpy-based BKT  (deep_knowledge_tracker.py)
+#   ChromaDB RAG → TF-IDF retrieval (rag_retriever.py)
+#   PyTorch ML   → numpy neural net (ml_difficulty_predictor.py)
+#
+# To enable full ML locally:
+#   pip install torch chromadb sentence-transformers
+# ─────────────────────────────────────────────────────────────
 
-# ── Core Framework ───────────────────────────────────────────────────
-streamlit>=1.28.0
+# ── Core UI ─────────────────────────────────────────────────
+streamlit>=1.32.0
 
-# ── LLM API ──────────────────────────────────────────────────────────
-groq>=0.4.0
+# ── LLM API ─────────────────────────────────────────────────
+groq>=0.9.0
 
-# ── Data & ML (existing) ─────────────────────────────────────────────
-numpy>=1.24.0
-pandas>=2.0.0
-scikit-learn>=1.3.0
+# ── Data & ML (lightweight) ──────────────────────────────────
+numpy>=1.26.0
+pandas>=2.1.0
+scikit-learn>=1.4.0
 
-# ── Visualisation ────────────────────────────────────────────────────
-plotly>=5.15.0
+# ── Visualisation ────────────────────────────────────────────
+plotly>=5.20.0
 
-# ── PDF Generation (AI Study Coach export) ───────────────────────────
-reportlab>=4.0.0
+# ── PDF generation (Study Coach export) ──────────────────────
+reportlab>=4.1.0
 
-# ── PDF Reading (Upload & Take Exam) ─────────────────────────────────
+# ── PDF reading (Upload & Take Exam tab) ─────────────────────
 PyPDF2>=3.0.0
-
-# ── Audio Transcription (Doubt Solver voice input) ───────────────────
-# openai-whisper is optional — remove if not using voice feature
-# openai-whisper>=20230918
-
-# ── Image Processing (Doubt Solver image upload) ─────────────────────
-Pillow>=10.0.0
-
-# ════════════════════════════════════════════════════════════════════
-# NEW: 4 Advanced Features
-# ════════════════════════════════════════════════════════════════════
-
-# ── Feature 1: Deep Knowledge Tracing (DKT) ──────────────────────────
-# PyTorch powers the LSTM sequence model.
-# If deployment has memory limits (<2GB), remove torch — the code
-# automatically falls back to a pure-NumPy LSTM.
-torch>=2.0.0
-
-# ── Feature 2: True RAG (Vector Knowledge Base) ──────────────────────
-# ChromaDB = local vector store (no external API needed)
-# chromadb>=0.5.23 required for Python 3.14 pydantic v1 compatibility
-# If still seeing ConfigError, remove this line entirely — app falls back to TF-IDF
-chromadb>=0.5.23
-
-# Semantic embeddings for ChromaDB (much better than keyword search)
-# Falls back to TF-IDF automatically if not installed.
-sentence-transformers>=2.3.0
-
-# ── Features 3 & 4: Meta-Cognitive Tracker + Daily Review Queue ───────
-# No new dependencies — uses streamlit + numpy already listed above.
-
-# ════════════════════════════════════════════════════════════════════
-# DEPLOYMENT NOTES
-# ════════════════════════════════════════════════════════════════════
-#
-# Streamlit Cloud / small servers:
-#   ChromaDB requires SQLite >= 3.35. If you see:
-#   "RuntimeError: Your system has an unsupported version of sqlite3"
-#   → add this line:
-#       pysqlite3-binary>=0.5.0
-#   → and add to the TOP of rag_retriever.py (before all other imports):
-#       __import__('pysqlite3')
-#       import sys
-#       sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
-#
-# Low-memory servers (< 2 GB RAM):
-#   Remove torch — DKT falls back to NumPy LSTM automatically.
-#   Remove sentence-transformers — RAG falls back to TF-IDF automatically.
-#   Minimum viable requirements are just the "Core" section above.
-# ════════════════════════════════════════════════════════════════════
