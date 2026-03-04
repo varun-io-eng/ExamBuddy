@@ -1,7 +1,6 @@
 # IMPORTANT: This prevents your API key from being uploaded to GitHub
 
-# Configuration file with API key
-config.py
+
 
 # Python cache
 __pycache__/
