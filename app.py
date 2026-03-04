@@ -460,14 +460,16 @@ def main():
 def render_sidebar():
     """Sidebar with stats, theme toggle, and user info"""
     with st.sidebar:
-        # User info
         user_info = st.session_state.db.get_user_info(st.session_state.user_id)
-        
-        st.markdown(f"### 👤 {user_info['username']}")
-        st.caption(f"📧 {user_info['email']}")
-        
+
+        username = user_info.get("username", "Guest") if user_info else "Guest"
+        email = user_info.get("email", "") if user_info else ""
+
+        st.markdown(f"### 👤 {username}")
+        if email:
+            st.caption(f"📧 {email}")
+
         st.divider()
-        
         # Theme toggle
         st.markdown("### 🎨 Theme")
         theme_option = st.radio(
