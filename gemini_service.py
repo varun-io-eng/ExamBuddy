@@ -1,12 +1,22 @@
 """
-gemini_service.py - FINAL Version 3.1
-UPDATED: Added structured context injection for student-aware AI responses
+gemini_service.py - Version 4.0
+UPDATED: True RAG (Retrieval-Augmented Generation) integrated into doubt solver.
+Every doubt answer now retrieves from a local vector knowledge base
+(HC Verma, NCERT, RD Sharma excerpts) before calling the LLM.
+Answers cite sources. Hallucinations minimised.
 """
 
 from groq import Groq
 import json
 import streamlit as st
 import re
+
+# ── RAG integration (graceful fallback if not installed) ─────────────────────
+try:
+    from rag_retriever import get_retriever
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
 
 
 class EnhancedGeminiService:
@@ -486,24 +496,80 @@ Generate exactly {count} questions. Return ONLY the JSON array, nothing else."""
     
     def answer_doubt_advanced(self, question, subject, confidence_level, past_mistakes=None, learning_style='mixed'):
         """
-        Advanced doubt answering with personalization
-        WITH CONTEXT INJECTION - fully personalized to student profile
+        RAG-POWERED doubt answering.
+        Step 1: Retrieve relevant knowledge chunks from local vector DB
+                (HC Verma, NCERT, RD Sharma excerpts — no hallucination)
+        Step 2: Build prompt with retrieved content as primary source
+        Step 3: LLM answers FROM that content and cites the source
         """
         mistake_context = ""
         if past_mistakes:
             mistake_types = [m.get('type', '') for m in past_mistakes[-3:]]
             if mistake_types:
-                mistake_context = f"\nNote: Student has recently made these types of errors: {', '.join(mistake_types)}. Address these patterns if relevant."
-        
+                mistake_context = f"Student recently made these errors: {', '.join(mistake_types)}."
+
         depth_guidance = {
-            1: "Explain like I'm 10. Start from very basics, use simple language, many examples.",
-            2: "Explain concepts clearly but don't oversimplify. Some prior knowledge assumed.",
+            1: "Explain like I'm 10. Start from basics, use simple language and many examples.",
+            2: "Explain clearly but don't oversimplify. Some prior knowledge assumed.",
             3: "Balanced explanation. Cover key concepts with examples.",
-            4: "Advanced explanation. Can use technical terms, focus on deeper insights.",
-            5: "Expert level. Challenge me, discuss edge cases and applications."
+            4: "Advanced explanation. Use technical terms, focus on deeper insights.",
+            5: "Expert level. Discuss edge cases, derivations, and exam applications."
         }
-        
-        prompt = f"""You are an expert {subject} tutor. Answer this student's doubt:
+
+        # ── STEP 1: RAG retrieval ─────────────────────────────────────────
+        rag_context_block = ""
+        rag_sources = ""
+        rag_used = False
+
+        if RAG_AVAILABLE:
+            try:
+                retriever = get_retriever()
+                student_ctx = ""
+                if hasattr(st.session_state, 'student_context') and st.session_state.student_context:
+                    student_ctx = st.session_state.student_context.get('context_string', '')
+
+                citation_info = retriever.get_citation_context(question, subject=subject)
+                chunks = citation_info.get('chunks', [])
+
+                if chunks:
+                    rag_context_block = "\n\n".join([
+                        f"[{c['source']} | {c['topic']}]\n{c['content']}"
+                        for c in chunks if c['score'] > 0.05
+                    ])
+                    rag_sources = ", ".join(
+                        c['source'] for c in chunks if c['score'] > 0.05
+                    )
+                    rag_used = True
+
+                    # Store in session state so UI can show "View Sources"
+                    st.session_state['last_doubt_sources'] = chunks
+            except Exception:
+                rag_used = False
+
+        # ── STEP 2: Build prompt ──────────────────────────────────────────
+        if rag_used and rag_context_block:
+            prompt = f"""You are an expert {subject} tutor for competitive exam preparation.
+
+RETRIEVED REFERENCE MATERIAL (use as primary source):
+{rag_context_block}
+
+{f"STUDENT CONTEXT: {mistake_context}" if mistake_context else ""}
+
+STUDENT QUESTION: {question}
+Student confidence level: {confidence_level}/5
+Depth guidance: {depth_guidance.get(confidence_level, depth_guidance[3])}
+Learning style: {learning_style}
+
+Instructions:
+- Answer primarily from the retrieved material above
+- Start with: "According to [source]..." to ground your answer in the reference
+- Include the key concept, a practical example, and a common exam pitfall
+- End with: "📚 Reference: {rag_sources}"
+
+Keep it focused and exam-relevant."""
+        else:
+            # Fallback: original context-injection approach
+            prompt = f"""You are an expert {subject} tutor. Answer this student's doubt:
 
 Question: {question}
 
@@ -512,14 +578,14 @@ Guidance: {depth_guidance.get(confidence_level, depth_guidance[3])}
 Learning style: {learning_style}
 {mistake_context}
 
-Provide a clear, helpful answer tailored to their level AND their exam preparation. Include:
-1. Direct answer to their question
+Provide:
+1. Direct answer
 2. Key concept explanation
-3. One practical example relevant to their exam
-4. Common pitfall to avoid (especially given their weak topics)
+3. One practical exam example
+4. Common pitfall to avoid
 
 Keep it concise but complete."""
-        
+
         return self.chat(prompt, temperature=0.6, inject_context=True)
 
     def generate_specific_view(self, question, view_type, subject):

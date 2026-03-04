@@ -1,71 +1,71 @@
-# Exam Buddy AI Pro - Enhanced Dependencies (With Advanced ML Features)
-# Install with: pip install -r requirements.txt
+# ════════════════════════════════════════════════════════════════════
+# Exam Buddy Pro - Complete Requirements
+# ════════════════════════════════════════════════════════════════════
 
-# Core Framework
+# ── Core Framework ───────────────────────────────────────────────────
 streamlit>=1.28.0
 
-# AI/ML
-groq
+# ── LLM API ──────────────────────────────────────────────────────────
+groq>=0.4.0
+
+# ── Data & ML (existing) ─────────────────────────────────────────────
 numpy>=1.24.0
-scipy>=1.10.0
-reportlab
-# Data Visualization
-plotly>=5.17.0
-
-# Data Processing
 pandas>=2.0.0
-
-# ==========================================
-# NEW DEPENDENCIES FOR ENHANCED FEATURES
-# ==========================================
-
-# Audio Processing (Voice Search)
-SpeechRecognition>=3.10.0
-
-# PDF Processing (File Upload)
-PyPDF2>=3.0.0
-
-# Image Processing (OCR for images)
-pytesseract>=0.3.10
-Pillow>=10.0.0
-
-# ==========================================
-# Optional but recommended
-# ==========================================
-python-dateutil>=2.8.2
 scikit-learn>=1.3.0
 
-# ==========================================
-# SPECIAL INSTALLATION NOTES
-# ==========================================
+# ── Visualisation ────────────────────────────────────────────────────
+plotly>=5.15.0
 
-# PyAudio (for voice input) - Install separately:
-# 
-# Windows:
-#   pip install pipwin
-#   pipwin install pyaudio
-#
-# Mac:
-#   brew install portaudio
-#   pip install pyaudio
-#
-# Linux:
-#   sudo apt-get install python3-pyaudio
-#   pip install pyaudio
+# ── PDF Generation (AI Study Coach export) ───────────────────────────
+reportlab>=4.0.0
 
-# Tesseract OCR (for image text extraction) - Install separately:
+# ── PDF Reading (Upload & Take Exam) ─────────────────────────────────
+PyPDF2>=3.0.0
+
+# ── Audio Transcription (Doubt Solver voice input) ───────────────────
+# openai-whisper is optional — remove if not using voice feature
+# openai-whisper>=20230918
+
+# ── Image Processing (Doubt Solver image upload) ─────────────────────
+Pillow>=10.0.0
+
+# ════════════════════════════════════════════════════════════════════
+# NEW: 4 Advanced Features
+# ════════════════════════════════════════════════════════════════════
+
+# ── Feature 1: Deep Knowledge Tracing (DKT) ──────────────────────────
+# PyTorch powers the LSTM sequence model.
+# If deployment has memory limits (<2GB), remove torch — the code
+# automatically falls back to a pure-NumPy LSTM.
+torch>=2.0.0
+
+# ── Feature 2: True RAG (Vector Knowledge Base) ──────────────────────
+# ChromaDB = local vector store (no external API needed)
+chromadb>=0.4.15
+
+# Semantic embeddings for ChromaDB (much better than keyword search)
+# Falls back to TF-IDF automatically if not installed.
+sentence-transformers>=2.3.0
+
+# ── Features 3 & 4: Meta-Cognitive Tracker + Daily Review Queue ───────
+# No new dependencies — uses streamlit + numpy already listed above.
+
+# ════════════════════════════════════════════════════════════════════
+# DEPLOYMENT NOTES
+# ════════════════════════════════════════════════════════════════════
 #
-# This is NOT a Python package - install from:
+# Streamlit Cloud / small servers:
+#   ChromaDB requires SQLite >= 3.35. If you see:
+#   "RuntimeError: Your system has an unsupported version of sqlite3"
+#   → add this line:
+#       pysqlite3-binary>=0.5.0
+#   → and add to the TOP of rag_retriever.py (before all other imports):
+#       __import__('pysqlite3')
+#       import sys
+#       sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 #
-# Windows: 
-#   Download from: https://github.com/UB-Mannheim/tesseract/wiki
-#   Install to: C:\Program Files\Tesseract-OCR
-#   Add to PATH
-#
-# Mac:
-#   brew install tesseract
-#
-# Linux (Ubuntu/Debian):
-#   sudo apt-get update
-#   sudo apt-get install tesseract-ocr
-#   sudo apt-get install libtesseract-dev
+# Low-memory servers (< 2 GB RAM):
+#   Remove torch — DKT falls back to NumPy LSTM automatically.
+#   Remove sentence-transformers — RAG falls back to TF-IDF automatically.
+#   Minimum viable requirements are just the "Core" section above.
+# ════════════════════════════════════════════════════════════════════

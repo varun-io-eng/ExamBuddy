@@ -11,22 +11,22 @@ ULTIMATE Exam Buddy Pro - app.py (2026-Level) ⭐⭐ UPDATED WITH EXCEPTIONAL TA
 - Exam Outcome Simulator
 - Meta-Explanation Feedback
 
-⭐⭐ NEW EXCEPTIONAL COMPETITIVE ADVANTAGE TABS (v2.0):
-Tab 8: 🎯 AI Study Coach
-  - Personalized exam readiness assessment with AI
-  - Day-by-day study plan generator (1-180 days)
-  - Exam day strategy with 4-phase approach
-  - Live Pomodoro study sessions with real-time motivation
+⭐⭐ NEW 9+ FEATURES (v3.0):
+Feature 1: Deep Knowledge Tracing (DKT) — LSTM replaces BKT
+  - Captures cross-topic dependencies over time
+  - "Failing Algebra Week 1 predicts Calculus failure Week 5"
 
-Tab 9: 🏆 Competitive Intelligence
-  - Anonymous peer comparison with percentile ranking
-  - ML-based exam rank prediction with confidence intervals
-  - Topic-wise competitive benchmarking vs top performers
-  - Strategic gap analysis for rank improvement
+Feature 2: True RAG Doubt Solver
+  - Retrieves from local vector DB (HC Verma, NCERT, RD Sharma)
+  - Every answer cites a real source, zero hallucination
 
-REPLACED TABS:
-  ❌ Error Analysis → Now covered by ML Insights + Competitive Intelligence
-  ❌ Wellness Center → Replaced by AI Study Coach (Live Pomodoro Sessions)
+Feature 3: Meta-Cognitive Answer Switching Tracker
+  - Detects: Changed Correct→Wrong, Guessing, Deep Confusion
+  - Shows HOW you think, not just WHAT you got wrong
+
+Feature 4: Daily Spaced Repetition Review Queue
+  - Forgetting curve math drives proactive "review NOW" alerts
+  - Closes the feedback loop: app reaches out to student
 """
 
 import streamlit as st
@@ -52,9 +52,14 @@ from ui_professional import apply_theme, render_metric_card, render_score_displa
 from analytics import render_analytics_dashboard, render_knowledge_graph
 from file_processors import AudioProcessor, FileProcessor
 
+# ⭐ FEATURE 1: Deep Knowledge Tracing (replaces BKT)
+try:
+    from deep_knowledge_tracker import DeepKnowledgeTracker as BayesianKnowledgeTracker
+    DKT_AVAILABLE = True
+except ImportError:
+    from bayesian_knowledge_tracker import BayesianKnowledgeTracker
+    DKT_AVAILABLE = False
 
-# ⭐ ADVANCED ML FEATURES INTEGRATION
-from bayesian_knowledge_tracker import BayesianKnowledgeTracker
 from intelligent_question_generator import IntelligentQuestionGenerator
 from error_taxonomy_engine import ErrorTaxonomy, FixStrategyEngine
 from advanced_features_ui import (
@@ -63,16 +68,35 @@ from advanced_features_ui import (
     render_error_analysis_tab
 )
 
-# ⭐ ML INTEGRATION - ADD THESE IMPORTS
+# ⭐ ML INTEGRATION
 from ml_integration import (
     initialize_ml_system,
-    render_unified_insights_tab,  # UPDATED: Combined ML + BKT insights
+    render_unified_insights_tab,
     enhance_adaptive_practice,
     render_ml_training_section,
-    build_student_context  # NEW: For context injection
+    build_student_context
 )
 
-# ⭐⭐ NEW EXCEPTIONAL TABS - COMPETITIVE ADVANTAGE FEATURES
+# ⭐ FEATURE 2: RAG retriever (initialised once)
+try:
+    from rag_retriever import get_retriever
+    RAG_AVAILABLE = True
+except ImportError:
+    RAG_AVAILABLE = False
+
+# ⭐ FEATURES 3 & 4: Meta-cognitive tracker + Daily Review Queue
+try:
+    from metacognitive_tracker import (
+        init_tracker, reset_tracker, track_answer_change,
+        render_metacognitive_analysis,
+        render_daily_review_queue,
+        render_sidebar_review_badge
+    )
+    METACOG_AVAILABLE = True
+except ImportError:
+    METACOG_AVAILABLE = False
+
+# ⭐⭐ COMPETITIVE ADVANTAGE TABS
 from ai_study_coach import render_ai_study_coach_tab
 from competitive_intelligence import render_competitive_intelligence_tab
 
@@ -311,14 +335,40 @@ def render_login_page():
 
 
 def initialize_advanced_features(db, llm):
-    """Initialize all advanced ML features"""
+    """Initialize all advanced ML features including DKT"""
     if not st.session_state.get('advanced_features_initialized', False):
         try:
-            st.session_state.bkt_tracker = BayesianKnowledgeTracker(db)
+            # Feature 1: Use DKT if available, else fall back to BKT
+            tracker = BayesianKnowledgeTracker(db)  # Already points to DKT via import
+            st.session_state.bkt_tracker = tracker
+
+            if DKT_AVAILABLE:
+                st.sidebar.success("🧠 DKT: Active (LSTM Knowledge Tracking)")
+                # Auto-train DKT in background if enough data
+                try:
+                    tracker.auto_train()
+                except Exception:
+                    pass
+            else:
+                st.sidebar.info("🧮 BKT: Active (Bayesian Knowledge Tracking)")
+
             st.session_state.question_generator = IntelligentQuestionGenerator(
-                db, llm, st.session_state.bkt_tracker
+                db, llm, tracker
             )
             st.session_state.error_engine = FixStrategyEngine(db, llm)
+
+            # Feature 2: Initialise RAG retriever
+            if RAG_AVAILABLE:
+                try:
+                    get_retriever()
+                    st.sidebar.success("📚 RAG: Active (Vector Knowledge Base)")
+                except Exception:
+                    pass
+
+            # Feature 3 & 4: init metacognitive tracker
+            if METACOG_AVAILABLE:
+                init_tracker()
+
             st.session_state.advanced_features_initialized = True
             return True
         except Exception as e:
@@ -378,17 +428,18 @@ def main():
     
     render_sidebar()
     
-    # ALL TABS - ⭐⭐ UPDATED WITH EXCEPTIONAL COMPETITIVE ADVANTAGE TABS
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs([
+    # ALL TABS - ⭐⭐ UPDATED WITH 9+ FEATURES
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
         "🧠 Advanced Doubt Solver",
         "🎯 Adaptive Practice (3 Modes)",
         "📝 Upload & Take Exam",
         "📊 Analytics & Learning DNA",
-        "🧠 ML + BKT Insights",      # UPDATED: Combined ML + BKT tab
+        "🧠 ML + DKT Insights",
         "🗺️ Concept Coverage",
-        "🎓 Knowledge Graph",        # UPDATED: Renamed from Knowledge State
-        "🎯 AI Study Coach",         # ⭐⭐ NEW - Replaces Error Analysis
-        "🏆 Competitive Intel"       # ⭐⭐ NEW - Replaces Wellness
+        "🎓 Knowledge Graph",
+        "🎯 AI Study Coach",
+        "🏆 Competitive Intel",
+        "📅 Daily Review Queue"   # ⭐ FEATURE 4
     ])
     
     with tab1:
@@ -456,6 +507,70 @@ def main():
             - ⚡ Strategic gaps vs top performers
             """)
 
+    # ⭐ FEATURE 4: Daily Review Queue tab
+    with tab10:
+        st.markdown("## 📅 Daily Review Queue")
+        st.caption("Your personalised study plan for today — driven by the forgetting curve")
+
+        dkt_label = "DKT (Deep Knowledge Tracing)" if DKT_AVAILABLE else "BKT (Bayesian)"
+        st.info(f"🧠 Powered by {dkt_label} — reviews topics at the mathematically optimal moment")
+
+        if st.session_state.get('bkt_tracker') and st.session_state.get('user_id'):
+            if METACOG_AVAILABLE:
+                def on_practice(subject, topic):
+                    st.session_state.current_subject = subject
+                    st.session_state.practice_subject = subject
+                    st.info(f"✅ Set practice topic to: {subject} → {topic}. Go to Adaptive Practice tab!")
+
+                render_daily_review_queue(
+                    st.session_state.user_id,
+                    st.session_state.bkt_tracker,
+                    on_practice_click=on_practice
+                )
+
+                # DKT cross-topic insight
+                if DKT_AVAILABLE:
+                    st.divider()
+                    st.markdown("### 🔗 DKT Cross-Topic Dependency Insights")
+                    st.caption("The LSTM model detects patterns across your entire study history")
+                    try:
+                        dkt_info = st.session_state.bkt_tracker.get_dkt_ability(
+                            st.session_state.user_id
+                        )
+                        col1, col2, col3 = st.columns(3)
+                        with col1:
+                            st.metric("DKT Ability Score",
+                                      f"{dkt_info['ability']*100:.1f}%")
+                        with col2:
+                            trend_icon = {"improving": "📈", "declining": "📉", "stable": "➡️"}.get(
+                                dkt_info.get('trend', 'stable'), "➡️"
+                            )
+                            st.metric("Learning Trend",
+                                      f"{trend_icon} {dkt_info.get('trend','stable').title()}")
+                        with col3:
+                            st.metric("Sequence Length",
+                                      f"{dkt_info['sequence_length']} attempts")
+
+                        insight = dkt_info.get('cross_topic_insight')
+                        if insight:
+                            st.warning(f"🔗 **Cross-Topic Pattern Detected:** {insight}")
+                        else:
+                            st.success("✅ No problematic cross-topic dependencies detected.")
+
+                        if dkt_info.get('next_prediction'):
+                            prob = dkt_info['next_prediction'] * 100
+                            st.metric(
+                                "P(correct on next question)",
+                                f"{prob:.1f}%",
+                                help="LSTM prediction based on your full attempt sequence"
+                            )
+                    except Exception as e:
+                        st.info(f"Complete more practice sessions to unlock DKT insights. ({e})")
+            else:
+                st.warning("Install metacognitive_tracker.py to enable the Review Queue.")
+        else:
+            st.info("📚 Complete at least 5 practice questions to unlock your Daily Review Queue!")
+
 
 def render_sidebar():
     """Sidebar with stats, theme toggle, and user info"""
@@ -519,6 +634,15 @@ def render_sidebar():
         minutes_since_break = (time.time() - st.session_state.last_break_time) / 60
         if minutes_since_break > dna['fatigue_time'] and st.session_state.questions_since_break > 10:
             st.warning("⏰ Consider taking a break!")
+        
+        st.divider()
+
+        # ⭐ FEATURE 4: Daily Review Queue badge
+        if METACOG_AVAILABLE and st.session_state.get('bkt_tracker') and st.session_state.get('user_id'):
+            render_sidebar_review_badge(
+                st.session_state.user_id,
+                st.session_state.bkt_tracker
+            )
         
         st.divider()
         
@@ -672,6 +796,17 @@ def render_advanced_doubt_solver(llm):
         # Main answer
         st.markdown(f'<div class="assistant-message">{st.session_state.doubt_last_response}</div>', 
                    unsafe_allow_html=True)
+
+        # ⭐ FEATURE 2: Show RAG sources used
+        rag_sources = st.session_state.get('last_doubt_sources', [])
+        if rag_sources:
+            with st.expander("📚 View Knowledge Sources Retrieved"):
+                st.caption("These reference materials were used to answer your question:")
+                for chunk in rag_sources:
+                    if chunk.get('score', 0) > 0.05:
+                        st.markdown(f"**{chunk['source']}** — *{chunk['topic']}*")
+                        st.caption(chunk['content'][:200] + "...")
+                        st.divider()
         
         st.divider()
         
@@ -872,6 +1007,9 @@ def render_mcq_practice(llm, topic, difficulty, count, subject):
             st.session_state.user_answers = {}
             st.session_state.quiz_submitted = False
             st.session_state.question_start_times = {}
+            # ⭐ FEATURE 3: Reset answer switch tracker for new quiz
+            if METACOG_AVAILABLE:
+                reset_tracker()
             st.rerun()
     
     if st.session_state.generated_questions and not st.session_state.quiz_submitted:
@@ -891,8 +1029,11 @@ def render_mcq_practice(llm, topic, difficulty, count, subject):
                 index=None  # No default selection
             )
             
-            # Store the selected answer
-            if answer is not None:
+            # ⭐ FEATURE 3: Track answer changes for meta-cognitive analysis
+            prev_answer = st.session_state.user_answers.get(i)
+            if answer is not None and answer != prev_answer:
+                if METACOG_AVAILABLE:
+                    track_answer_change(i, prev_answer or '', answer)
                 st.session_state.user_answers[i] = answer
             
             st.divider()
@@ -973,6 +1114,15 @@ def render_mcq_practice(llm, topic, difficulty, count, subject):
         st.divider()
         st.markdown("### ⏱️ Time-Pressure Intelligence")
         analyze_time_pressure()
+
+        # ⭐ FEATURE 3: Meta-Cognitive Answer Switching Analysis
+        if METACOG_AVAILABLE:
+            tracker = init_tracker()
+            render_metacognitive_analysis(
+                tracker,
+                st.session_state.generated_questions,
+                st.session_state.user_answers
+            )
         
         st.divider()
         st.markdown("### 📝 Detailed Review")

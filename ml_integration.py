@@ -1,32 +1,39 @@
 """
 ml_integration.py - Integrate ML Model into Existing App
-UPDATED: Combined ML + BKT insights tab with Structured Context Injection
+UPDATED: DKT (Deep Knowledge Tracing) replaces BKT for unified insights
 """
 
 import streamlit as st
 from ml_difficulty_predictor import MLDifficultyPredictor
 from ml_trainer import MLTrainer, MLDataCollector
-from bayesian_knowledge_tracker import BayesianKnowledgeTracker
 import plotly.graph_objects as go
 import plotly.express as px
 import json
 
+# ⭐ Use DKT if available, fall back to BKT
+try:
+    from deep_knowledge_tracker import DeepKnowledgeTracker as BayesianKnowledgeTracker
+    DKT_MODE = True
+except ImportError:
+    from bayesian_knowledge_tracker import BayesianKnowledgeTracker
+    DKT_MODE = False
+
 
 def initialize_ml_system(db):
     """
-    Initialize ML system
+    Initialize ML system with DKT support.
     Call this once in your app's main()
     """
     if 'ml_predictor' not in st.session_state:
         st.session_state.ml_predictor = MLDifficultyPredictor()
         st.session_state.ml_trainer = MLTrainer(db)
         st.session_state.bkt_tracker = BayesianKnowledgeTracker(db)
-        
-        # Try to load existing model
+
+        label = "DKT (LSTM)" if DKT_MODE else "BKT (Bayesian)"
         if st.session_state.ml_predictor.is_trained:
-            st.sidebar.success("🧠 ML Model: Active")
+            st.sidebar.success(f"🧠 ML Model: Active | {label}")
         else:
-            st.sidebar.info("📊 ML Model: Collecting data...")
+            st.sidebar.info(f"📊 ML Model: Collecting data... | {label}")
 
 
 def build_student_context(user_id, db, exam_type="JEE"):
@@ -180,6 +187,31 @@ def render_unified_insights_tab(user_id, db, exam_type="JEE"):
     # SECTION 1: Student Profile Overview
     # ═══════════════════════════════════════════════════════════════════
     st.markdown("### 🎯 Your Learning Profile")
+
+    # ⭐ DKT Global Ability (if available)
+    if DKT_MODE:
+        try:
+            dkt_info = st.session_state.bkt_tracker.get_dkt_ability(user_id)
+            if dkt_info['sequence_length'] >= 5:
+                st.markdown("#### 🔗 Deep Knowledge Tracing (LSTM) — Global Ability")
+                col_d1, col_d2, col_d3, col_d4 = st.columns(4)
+                with col_d1:
+                    st.metric("DKT Ability", f"{dkt_info['ability']*100:.1f}%")
+                with col_d2:
+                    trend_map = {"improving": "📈 Improving", "declining": "📉 Declining", "stable": "➡️ Stable"}
+                    st.metric("Trend", trend_map.get(dkt_info.get('trend','stable'), "➡️ Stable"))
+                with col_d3:
+                    st.metric("Next Q Prediction", f"{dkt_info.get('next_prediction',0.5)*100:.1f}%",
+                              help="P(correct on next question) based on your full attempt sequence")
+                with col_d4:
+                    st.metric("Sequence Depth", f"{dkt_info['sequence_length']} attempts")
+
+                cross = dkt_info.get('cross_topic_insight')
+                if cross:
+                    st.warning(f"🔗 **Cross-Topic Pattern (DKT only):** {cross}")
+                st.divider()
+        except Exception:
+            pass
     
     col1, col2, col3, col4 = st.columns(4)
     
