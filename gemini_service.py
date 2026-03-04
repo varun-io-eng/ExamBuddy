@@ -209,7 +209,7 @@ Requirements:
 4. Cover different aspects of the topic
 5. Make questions exam-relevant and practical
 6. CRITICAL: Write all math/code in plain text only — NO LaTeX, NO backslashes
-   Good: "O(n^2)", "1/2", "sqrt(n)"   Bad: "O(n^{2})", "\frac{1}{2}", "\sqrt{n}"
+   Good: "O(n^2)", "1/2", "sqrt(n)"   Bad: "O(n^{{2}})", "\\frac{{1}}{{2}}", "\\sqrt{{n}}"
 7. Use only standard ASCII characters in all fields — no special symbols
 
 Return ONLY a valid JSON array in this EXACT format:
@@ -743,7 +743,7 @@ Requirements:
 4. Cover different aspects of the topic
 5. Make questions exam-relevant and practical
 6. CRITICAL: Write all math/code in plain text only — NO LaTeX, NO backslashes
-   Good: "O(n^2)", "1/2", "sqrt(n)"   Bad: "O(n^{2})", "\frac{1}{2}", "\sqrt{n}"
+   Good: "O(n^2)", "1/2", "sqrt(n)"   Bad: "O(n^{{2}})", "\\frac{{1}}{{2}}", "\\sqrt{{n}}"
 7. Use only standard ASCII characters in all fields — no special symbols
 
 Return ONLY a valid JSON array in this EXACT format:
