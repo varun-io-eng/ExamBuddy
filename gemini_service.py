@@ -46,7 +46,7 @@ class EnhancedGeminiService:
 Remember: Tailor your response to this student's profile above."""
         return prompt
     
-    def _chat(self, messages, temperature=0.6, inject_context=True, max_tokens=4096):
+    def _chat(self, messages, temperature=0.6, inject_context=True):
         """Internal method for API calls with context injection"""
         try:
             # Inject context into user messages if enabled
@@ -58,8 +58,7 @@ Remember: Tailor your response to this student's profile above."""
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens
+                temperature=temperature
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -72,8 +71,24 @@ Remember: Tailor your response to this student's profile above."""
     
     @staticmethod
     def _sanitize_json_string(raw: str) -> str:
-        """Sanitize JSON strings with LaTeX backslashes"""
-        LEGAL_AFTER_BACKSLASH = set(r'"\/ bfnrt'.replace(' ', ''))
+        """
+        Robust JSON sanitizer that handles:
+        - LaTeX backslashes: \frac, \sqrt, O(n^2), etc.
+        - Unescaped quotes inside strings
+        - Unicode characters
+        - Special characters in CS/Math content
+        """
+        import re
+
+        # Step 1: Extract just the JSON array portion
+        start = raw.find('[')
+        end = raw.rfind(']')
+        if start != -1 and end != -1:
+            raw = raw[start:end+1]
+
+        # Step 2: Fix backslash sequences
+        # Replace LaTeX-style backslashes that aren't valid JSON escapes
+        LEGAL_AFTER_BACKSLASH = set('"\\/bfnrtu')
         out = []
         i = 0
         while i < len(raw):
@@ -88,6 +103,7 @@ Remember: Tailor your response to this student's profile above."""
                     out.append(raw[i:i+6])
                     i += 6
                 else:
+                    # Double-escape so it becomes a literal backslash in the string
                     out.append('\\\\')
                     i += 1
             else:
@@ -95,335 +111,31 @@ Remember: Tailor your response to this student's profile above."""
                 i += 1
         return ''.join(out)
 
-    def extract_questions_from_pdf_text(self, pdf_text, max_questions=100):
+    @staticmethod
+    def _aggressive_json_clean(text: str) -> str:
         """
-        Hybrid extraction: Regex first for good text, LLM for complex/incomplete text.
+        More aggressive cleaning for badly formed LLM JSON.
+        Handles cases like:
+        - Trailing commas before } or ]
+        - Single quotes instead of double quotes
+        - Unquoted keys
+        - Control characters
+        - O(n^2) and similar CS notation breaking JSON
         """
-        st.info("🔍 Starting enhanced extraction...")
-        
-        # Check if PDF text looks complete or incomplete
-        incomplete_text = self._check_if_incomplete(pdf_text)
-        
-        if incomplete_text:
-            st.warning("⚠️ Detected incomplete text extraction - using AI-primary approach")
-            st.info("💡 For best results, install PyMuPDF: pip install pymupdf")
-            
-            # Use LLM-first for incomplete text
-            return self._extract_with_llm_primary(pdf_text, max_questions)
-        else:
-            st.success("✅ Detected complete text extraction - using optimized hybrid approach")
-            
-            # Use regex-first for complete text
-            return self._extract_with_regex_primary(pdf_text, max_questions)
-    
-    def _extract_with_regex_primary(self, pdf_text, max_questions):
-        """Extract from complete PDF text using regex + LLM combination"""
-        
-        # ── STRATEGY 1: Enhanced Regex Extraction ─────────────────────────
-        st.info("📋 Strategy 1: Pattern-based extraction...")
-        regex_questions = self._extract_with_improved_regex(pdf_text)
-        st.success(f"✅ Regex found: {len(regex_questions)} questions")
-        
-        # ── STRATEGY 2: LLM for remaining questions ───────────────────────
-        if len(regex_questions) < 70:  # If we might be missing some
-            st.info("📋 Strategy 2: AI extraction for remaining questions...")
-            llm_questions = self._llm_extract_questions_enhanced(pdf_text)
-            st.success(f"✅ AI found: {len(llm_questions)} questions")
-            
-            # Combine both
-            all_questions = regex_questions + llm_questions
-        else:
-            all_questions = regex_questions
-        
-        # Deduplicate
-        unique_questions = self._remove_duplicate_questions(all_questions)
-        st.success(f"🎉 Total extracted: {len(unique_questions)} unique questions!")
-        
-        return unique_questions[:max_questions]
-    
-    def _extract_with_llm_primary(self, pdf_text, max_questions):
-        """Extract from incomplete PDF text using LLM-primary approach"""
-        
-        # ── PRIMARY STRATEGY: LLM Extraction ──────────────────────────────
-        st.info("📋 Using AI extraction (primary method)...")
-        llm_questions = self._llm_extract_questions_enhanced(pdf_text)
-        st.success(f"✅ AI extracted: {len(llm_questions)} questions")
-        
-        # ── SECONDARY STRATEGY: Count expected questions ──────────────────
-        question_numbers = self._extract_question_numbers(pdf_text)
-        st.info(f"📊 Found {len(question_numbers)} question markers")
-        
-        if len(llm_questions) == 0:
-            st.error("❌ No valid questions found")
-            return None
-        
-        unique_questions = self._remove_duplicate_questions(llm_questions)
-        st.success(f"🎉 Successfully extracted {len(unique_questions)} unique questions!")
-        
-        if len(question_numbers) > len(unique_questions):
-            st.warning(f"⚠️ Expected {len(question_numbers)} but got {len(unique_questions)}")
-        
-        return unique_questions[:max_questions]
+        import re
 
-    def _extract_with_improved_regex(self, text):
-        """
-        Improved regex extraction for complete PDF text.
-        Handles the actual format from the PDF images.
-        """
-        questions = []
-        
-        # Pattern: Q followed by number, then question text, then options in two-column format
-        pattern = re.compile(
-            r'Q(\d+)\.\s*(.+?)(?=Q\d+\.|$)',
-            re.DOTALL | re.MULTILINE
-        )
-        
-        matches = list(pattern.finditer(text))
-        
-        for match in matches:
-            q_num = int(match.group(1))
-            body = match.group(2).strip()
-            
-            # Find where options start
-            # Look for (1) followed by actual content
-            opt_start = re.search(r'\n\s*\(1\)\s+\S', body)
-            
-            if not opt_start:
-                continue
-            
-            stem = body[:opt_start.start()].strip()
-            opt_text = body[opt_start.start():].strip()
-            
-            if len(stem) < 5:
-                continue
-            
-            # Extract options - they're in format:
-            # (1) value1    (2) value2
-            # (3) value3    (4) value4
-            options = self._extract_options_from_complete_text(opt_text)
-            
-            if len(options) == 4:
-                questions.append({
-                    "question": stem,
-                    "options": options,
-                    "correct_answer": "A",
-                    "explanation": ""
-                })
-        
-        return questions
-    
-    def _extract_options_from_complete_text(self, opt_text):
-        """
-        Extract options from complete text where values are present.
-        Format: (1) 628    (2) 812
-                (3) 526    (4) 784
-        """
-        options = {}
-        label_map = {'1': 'A', '2': 'B', '3': 'C', '4': 'D'}
-        
-        # Split by lines to handle two-column layout
-        lines = opt_text.split('\n')
-        
-        for line in lines:
-            # Find all (N) value patterns in this line
-            # Pattern: (1) followed by non-parenthesis content
-            pattern = r'\(([1-4])\)\s+([^\(]+?)(?=\s*\([1-4]\)|\s*$)'
-            matches = re.findall(pattern, line)
-            
-            for num, value in matches:
-                value = value.strip()
-                if value and len(value) > 0:
-                    options[label_map[num]] = value
-        
-        # Alternative extraction if first method didn't work
-        if len(options) < 4:
-            options = {}
-            # Try more aggressive pattern
-            pattern = r'\(([1-4])\)\s+(\S[^\(\n]*?)(?=\s*\([1-4]\)|$)'
-            matches = re.findall(pattern, opt_text, re.DOTALL)
-            
-            for num, value in matches:
-                value = value.strip()
-                # Clean up value - remove trailing newlines, extra spaces
-                value = re.sub(r'\s+', ' ', value).strip()
-                if value:
-                    options[label_map[num]] = value
-        
-        return options
-    
-    def _check_if_incomplete(self, pdf_text):
-        """Detect if PDF text extraction is incomplete (missing option values)"""
-        
-        # Count option markers
-        option_markers = re.findall(r'\([1-4]\)', pdf_text)
-        
-        # Count option values (text after markers)
-        option_values = re.findall(r'\([1-4]\)\s+(\S+)', pdf_text)
-        
-        # If we have markers but few values, extraction is incomplete
-        if len(option_markers) > 20 and len(option_values) < len(option_markers) * 0.7:
-            return True
-        
-        # Check for blank options pattern: (1)   (2)   (3)   (4)
-        blank_pattern = re.findall(r'\([1-4]\)\s+\([1-4]\)', pdf_text)
-        if len(blank_pattern) > 5:
-            return True
-        
-        return False
-    
-    def _extract_question_numbers(self, text):
-        """Extract question numbers to verify completeness"""
-        pattern = r'Q(\d+)\.'
-        matches = re.findall(pattern, text)
-        return [int(m) for m in matches]
-    
-    def _llm_extract_questions_enhanced(self, pdf_text):
-        """Enhanced LLM extraction for incomplete/complex PDFs"""
-        
-        # Split into chunks if text is too long
-        max_chunk_size = 4000
-        chunks = self._split_text_into_chunks(pdf_text, max_chunk_size)
-        
-        all_questions = []
-        
-        for i, chunk in enumerate(chunks):
-            st.info(f"Processing chunk {i+1}/{len(chunks)}...")
-            
-            prompt = f"""Extract MCQ questions from this text. The text may have incomplete extraction.
+        # Remove control characters except newlines/tabs
+        text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', '', text)
 
-TEXT:
-{chunk}
+        # Fix trailing commas before closing braces/brackets
+        text = re.sub(r',\s*([}\]])', r'\1', text)
 
-Extract ALL questions you can find. For each question:
-1. Identify the question number and text
-2. Extract all 4 options (A, B, C, D)
-3. If option values are missing, try to infer from context or mark as [MISSING]
+        # Fix single-quoted strings → double-quoted
+        # Only do this if text looks like it uses single quotes predominantly
+        if text.count("'") > text.count('"') * 2:
+            text = text.replace("'", '"')
 
-Return as JSON array:
-[
-  {{
-    "question": "full question text",
-    "options": {{"A": "option text", "B": "...", "C": "...", "D": "..."}},
-    "correct_answer": "A",
-    "explanation": ""
-  }}
-]
-
-IMPORTANT: Return ONLY the JSON array, no other text."""
-            
-            # Don't inject context for extraction tasks
-            response = self.chat(prompt, temperature=0.3, inject_context=False)
-            
-            if response:
-                questions = self._parse_json_questions(response)
-                all_questions.extend(questions)
-        
-        return all_questions
-    
-    def _split_text_into_chunks(self, text, max_size):
-        """Split text into chunks at question boundaries"""
-        chunks = []
-        current_chunk = ""
-        
-        # Split by question markers
-        questions = re.split(r'(Q\d+\.)', text)
-        
-        for i in range(0, len(questions), 2):
-            if i + 1 < len(questions):
-                question_text = questions[i] + questions[i+1]
-            else:
-                question_text = questions[i]
-            
-            if len(current_chunk) + len(question_text) > max_size and current_chunk:
-                chunks.append(current_chunk)
-                current_chunk = question_text
-            else:
-                current_chunk += question_text
-        
-        if current_chunk:
-            chunks.append(current_chunk)
-        
-        return chunks if chunks else [text]
-    
-    def _remove_duplicate_questions(self, questions):
-        """Remove duplicate questions"""
-        seen = set()
-        unique = []
-        
-        for q in questions:
-            # Create a simple hash of the question
-            q_text = q.get('question', '')[:100].lower().strip()
-            
-            if q_text and q_text not in seen:
-                seen.add(q_text)
-                unique.append(q)
-        
-        return unique
-    
-    def _parse_json_questions(self, response):
-        """Parse JSON questions from LLM response — handles truncated responses"""
-        try:
-            # Clean response
-            text = response.strip()
-            
-            # Remove markdown code blocks if present
-            if '```json' in text:
-                text = text.split('```json')[1].split('```')[0]
-            elif '```' in text:
-                text = text.split('```')[1].split('```')[0]
-            
-            # Find JSON array boundaries
-            start = text.find('[')
-            if start == -1:
-                return []
-            
-            end = text.rfind(']')
-            
-            # If response was truncated (no closing bracket), try to recover
-            # by salvaging complete question objects already parsed
-            if end == -1 or end < start:
-                text = text[start:]
-                # Find all complete {...} objects manually
-                questions = []
-                depth = 0
-                obj_start = None
-                for i, ch in enumerate(text):
-                    if ch == '{':
-                        if depth == 0:
-                            obj_start = i
-                        depth += 1
-                    elif ch == '}':
-                        depth -= 1
-                        if depth == 0 and obj_start is not None:
-                            try:
-                                obj_str = self._sanitize_json_string(text[obj_start:i+1])
-                                q = json.loads(obj_str)
-                                if (isinstance(q, dict) and 'question' in q 
-                                        and 'options' in q and len(q['options']) >= 4):
-                                    questions.append(q)
-                            except Exception:
-                                pass
-                            obj_start = None
-                return questions
-            
-            # Normal path — full JSON array present
-            json_str = self._sanitize_json_string(text[start:end + 1])
-            questions = json.loads(json_str)
-            
-            # Validate questions
-            valid_questions = []
-            for q in questions:
-                if (isinstance(q, dict) and 
-                    'question' in q and 
-                    'options' in q and 
-                    len(q['options']) >= 4):
-                    valid_questions.append(q)
-            
-            return valid_questions
-        except Exception as e:
-            st.error(f"❌ Failed to parse questions: {str(e)}")
-            return []
-    
+        return text
     def explain_mistake(self, question, user_answer, correct_answer, explanation):
         """
         Explain why a student got a question wrong
@@ -496,6 +208,9 @@ Requirements:
 3. Provide brief explanations for correct answers
 4. Cover different aspects of the topic
 5. Make questions exam-relevant and practical
+6. CRITICAL: Write all math/code in plain text only — NO LaTeX, NO backslashes
+   Good: "O(n^2)", "1/2", "sqrt(n)"   Bad: "O(n^{2})", "\frac{1}{2}", "\sqrt{n}"
+7. Use only standard ASCII characters in all fields — no special symbols
 
 Return ONLY a valid JSON array in this EXACT format:
 [
@@ -504,7 +219,6 @@ Return ONLY a valid JSON array in this EXACT format:
     "options": {{"A": "option1", "B": "option2", "C": "option3", "D": "option4"}},
     "correct_answer": "A",
     "explanation": "Brief explanation why this is correct",
-    "subject": "Physics/Chemistry/Mathematics/Biology/Computer Science (pick correct one)",
     "topic": "{topic}",
     "difficulty": "{difficulty}"
   }}
@@ -512,35 +226,548 @@ Return ONLY a valid JSON array in this EXACT format:
 
 Generate exactly {count} questions. Return ONLY the JSON array, nothing else."""
         
-        # Use high max_tokens — 20 questions as JSON needs ~3000 tokens minimum
-        response = self._chat(
-            [{"role": "user", "content": prompt}],
-            temperature=0.7,
-            inject_context=True,
-            max_tokens=8000
-        )
+        response = self.chat(prompt, temperature=0.7, inject_context=True)
         
         if response:
             questions = self._parse_json_questions(response)
             
-            # Retry once with smaller batch if parsing failed (truncated JSON)
-            if not questions and count > 5:
-                st.info("🔄 Retrying with smaller batch...")
-                half = count // 2
-                retry_prompt = prompt.replace(
-                    f"Generate {count} high-quality", f"Generate {half} high-quality"
-                ).replace(f"Generate exactly {count}", f"Generate exactly {half}")
-                r2 = self._chat(
-                    [{"role": "user", "content": retry_prompt}],
-                    temperature=0.5,
-                    inject_context=False,
-                    max_tokens=8000
-                )
-                if r2:
-                    questions = self._parse_json_questions(r2)
+            # Ensure we have the requested count
+            if len(questions) < count:
+                st.warning(f"Generated {len(questions)} questions (requested {count})")
             
-            if questions and len(questions) < count:
-                st.warning(f"⚠️ Generated {len(questions)} questions (requested {count})")
+            return questions[:count] if questions else None
+        
+        return None
+    
+    def answer_doubt_advanced(self, question, subject, confidence_level, past_mistakes=None, learning_style='mixed'):
+        """
+        RAG-POWERED doubt answering.
+        Step 1: Retrieve relevant knowledge chunks from local vector DB
+                (HC Verma, NCERT, RD Sharma excerpts — no hallucination)
+        Step 2: Build prompt with retrieved content as primary source
+        Step 3: LLM answers FROM that content and cites the source
+        """
+        mistake_context = ""
+        if past_mistakes:
+            mistake_types = [m.get('type', '') for m in past_mistakes[-3:]]
+            if mistake_types:
+                mistake_context = f"Student recently made these errors: {', '.join(mistake_types)}."
+
+        depth_guidance = {
+            1: "Explain like I'm 10. Start from basics, use simple language and many examples.",
+            2: "Explain clearly but don't oversimplify. Some prior knowledge assumed.",
+            3: "Balanced explanation. Cover key concepts with examples.",
+            4: "Advanced explanation. Use technical terms, focus on deeper insights.",
+            5: "Expert level. Discuss edge cases, derivations, and exam applications."
+        }
+
+        # ── STEP 1: RAG retrieval ─────────────────────────────────────────
+        rag_context_block = ""
+        rag_sources = ""
+        rag_used = False
+
+        if RAG_AVAILABLE:
+            try:
+                retriever = get_retriever()
+                student_ctx = ""
+                if hasattr(st.session_state, 'student_context') and st.session_state.student_context:
+                    student_ctx = st.session_state.student_context.get('context_string', '')
+
+                citation_info = retriever.get_citation_context(question, subject=subject)
+                chunks = citation_info.get('chunks', [])
+
+                if chunks:
+                    rag_context_block = "\n\n".join([
+                        f"[{c['source']} | {c['topic']}]\n{c['content']}"
+                        for c in chunks if c['score'] > 0.05
+                    ])
+                    rag_sources = ", ".join(
+                        c['source'] for c in chunks if c['score'] > 0.05
+                    )
+                    rag_used = True
+
+                    # Store in session state so UI can show "View Sources"
+                    st.session_state['last_doubt_sources'] = chunks
+            except Exception:
+                rag_used = False
+
+        # ── STEP 2: Build prompt ──────────────────────────────────────────
+        if rag_used and rag_context_block:
+            prompt = f"""You are an expert {subject} tutor for competitive exam preparation.
+
+RETRIEVED REFERENCE MATERIAL (use as primary source):
+{rag_context_block}
+
+{f"STUDENT CONTEXT: {mistake_context}" if mistake_context else ""}
+
+STUDENT QUESTION: {question}
+Student confidence level: {confidence_level}/5
+Depth guidance: {depth_guidance.get(confidence_level, depth_guidance[3])}
+Learning style: {learning_style}
+
+Instructions:
+- Answer primarily from the retrieved material above
+- Start with: "According to [source]..." to ground your answer in the reference
+- Include the key concept, a practical example, and a common exam pitfall
+- End with: "📚 Reference: {rag_sources}"
+
+Keep it focused and exam-relevant."""
+        else:
+            # Fallback: original context-injection approach
+            prompt = f"""You are an expert {subject} tutor. Answer this student's doubt:
+
+Question: {question}
+
+Student's confidence level: {confidence_level}/5
+Guidance: {depth_guidance.get(confidence_level, depth_guidance[3])}
+Learning style: {learning_style}
+{mistake_context}
+
+Provide:
+1. Direct answer
+2. Key concept explanation
+3. One practical exam example
+4. Common pitfall to avoid
+
+Keep it concise but complete."""
+
+        return self.chat(prompt, temperature=0.6, inject_context=True)
+
+    def generate_specific_view(self, question, view_type, subject):
+        """
+        Generate a specific type of explanation view
+        WITH CONTEXT INJECTION - adapted to student's level
+        """
+        
+        view_prompts = {
+            'intuition': f"""Explain this {subject} concept using PURE INTUITION (no math):
+
+Question: {question}
+
+Requirements:
+- Use everyday analogies and real-world examples
+- Focus on "why" it works, not "how" to calculate
+- Make it feel obvious and natural
+- Use simple language anyone can understand
+- Adapt depth to the student's ability level
+- 3-4 sentences max
+
+Generate an intuitive explanation:""",
+            
+            'math': f"""Provide a RIGOROUS MATHEMATICAL explanation:
+
+Question: {question}
+Subject: {subject}
+
+Requirements:
+- Show all formulas and derivations
+- Include step-by-step mathematical proof
+- Use proper notation and terminology
+- Explain the mathematical reasoning
+- Adapt technical depth to student's ability level
+- Be precise and technical
+
+Generate mathematical explanation:""",
+            
+            'analogy': f"""Create a POWERFUL ANALOGY to explain this:
+
+Question: {question}
+Subject: {subject}
+
+Requirements:
+- Use a relatable, everyday situation
+- Make it memorable and vivid
+- Show clear parallels to the concept
+- Keep it simple and engaging
+- Adapt to student's background
+- End with "Just like..." connection
+
+Generate an analogy:""",
+            
+            'shortcut': f"""Provide the FASTEST SHORTCUT method:
+
+Question: {question}
+Subject: {subject}
+
+Requirements:
+- Give a quick trick or rule of thumb for their exam
+- Explain when to use it (and when NOT to)
+- Make it memorable (acronym, rhyme, or pattern)
+- Include one example
+- Consider their time pressure tendencies
+- Keep it under 4 sentences
+
+Generate a shortcut:""",
+            
+            'visual': f"""Describe a VISUAL/GRAPHICAL explanation:
+
+Question: {question}
+Subject: {subject}
+
+Requirements:
+- Describe what to draw or visualize
+- Use spatial reasoning and diagrams
+- Include labels and key features
+- Make it easy to sketch mentally
+- Adapt complexity to student level
+- Focus on visual patterns
+
+Describe the visualization:"""
+        }
+        
+        prompt = view_prompts.get(view_type, view_prompts['intuition'])
+        return self.chat(prompt, temperature=0.7, inject_context=True)
+
+    def generate_follow_up_question(self, original_question, explanation):
+        """
+        Generate a follow-up question to test understanding
+        WITH CONTEXT INJECTION - difficulty adapted to student
+        """
+        prompt = f"""Based on this question and explanation, generate ONE follow-up question to test understanding:
+
+Original Question: {original_question}
+
+Explanation Given: {explanation}
+
+Generate a follow-up question that:
+1. Tests if the student truly understood the concept
+2. Is slightly different from the original (applies the concept to a new scenario)
+3. Matches the student's optimal difficulty range
+4. Is not too hard - should be answerable if they understood the explanation
+5. Is concise and clear
+
+Return ONLY the follow-up question, nothing else."""
+        
+        return self.chat(prompt, temperature=0.7, inject_context=True)
+
+    def evaluate_follow_up_answer(self, question, user_answer, original_context):
+        """
+        Evaluate the user's answer to a follow-up question
+        WITH CONTEXT INJECTION - personalized feedback
+        """
+        prompt = f"""Evaluate this student's answer to a follow-up question:
+
+Follow-up Question: {question}
+
+Student's Answer: {user_answer}
+
+Original Context: {original_context}
+
+Provide:
+1. Whether the answer demonstrates understanding (Yes/Partially/No)
+2. What they got right
+3. What needs improvement (if anything) - link to their weak topics if relevant
+4. One encouraging comment considering their learning journey
+
+Keep it constructive and brief (3-4 sentences)."""
+        
+        return self.chat(prompt, temperature=0.5, inject_context=True)
+
+    def mental_health_support(self, message, mood):
+        """
+        Provide supportive responses for mental health check-ins
+        WITH CONTEXT INJECTION - aware of exam pressure and student stress
+        """
+        prompt = f"""You are a supportive study companion. A student shared:
+
+Message: {message}
+Current mood: {mood}
+
+Provide a warm, empathetic response that:
+1. Acknowledges their feelings
+2. Offers gentle encouragement considering their exam preparation
+3. Suggests one small, actionable step aligned with their study needs
+4. Reminds them you're here to help
+
+Keep it brief (3-4 sentences), genuine, and supportive. Do NOT provide medical advice."""
+        
+        return self.chat(prompt, temperature=0.7, inject_context=True)
+    
+    def generate_exam_strategy(self, student_context):
+        """
+        Generate exam-specific strategy based on student profile
+        NEW METHOD for context-aware exam planning
+        """
+        prompt = f"""Based on this student's profile, generate a personalized exam strategy:
+
+The student is preparing for: {student_context.get('exam', 'JEE')}
+
+Provide:
+1. Question selection strategy (which to attempt first, which to skip)
+2. Time management plan specific to their time pressure tendency
+3. Negative marking mitigation based on their risk level
+4. Topic prioritization based on weak areas
+5. Confidence-building tips
+
+Format as clear, numbered sections. Be specific and actionable."""
+        
+        # Manually inject context since it's already in the prompt
+        return self.chat(prompt, temperature=0.6, inject_context=True)
+
+
+    def _parse_json_questions(self, response):
+        """
+        Robust JSON question parser with 4-layer fallback:
+        Layer 1: Standard parse after sanitize
+        Layer 2: Aggressive clean then parse
+        Layer 3: Salvage complete objects individually
+        Layer 4: Regex extraction as last resort
+        """
+        import re
+
+        if not response:
+            return []
+
+        text = response.strip()
+
+        # Remove markdown fences
+        if '```json' in text:
+            text = text.split('```json')[1].split('```')[0].strip()
+        elif '```' in text:
+            text = text.split('```')[1].split('```')[0].strip()
+
+        # Extract array bounds
+        start = text.find('[')
+        if start == -1:
+            return []
+        end = text.rfind(']')
+
+        # ── LAYER 1: Standard sanitize + parse ───────────────────────────
+        if end != -1:
+            try:
+                json_str = self._sanitize_json_string(text[start:end+1])
+                questions = json.loads(json_str)
+                valid = self._validate_questions(questions)
+                if valid:
+                    return valid
+            except Exception:
+                pass
+
+        # ── LAYER 2: Aggressive clean + parse ────────────────────────────
+        try:
+            cleaned = self._aggressive_json_clean(text[start:] if end == -1 else text[start:end+1])
+            sanitized = self._sanitize_json_string(cleaned)
+            questions = json.loads(sanitized)
+            valid = self._validate_questions(questions)
+            if valid:
+                return valid
+        except Exception:
+            pass
+
+        # ── LAYER 3: Salvage complete objects one by one ──────────────────
+        # Works even when the array is truncated or has one bad object
+        try:
+            salvaged = []
+            search_text = text[start:]
+            depth = 0
+            obj_start = None
+            in_string = False
+            escape_next = False
+
+            for i, ch in enumerate(search_text):
+                if escape_next:
+                    escape_next = False
+                    continue
+                if ch == '\\' and in_string:
+                    escape_next = True
+                    continue
+                if ch == '"':
+                    in_string = not in_string
+                    continue
+                if in_string:
+                    continue
+                if ch == '{':
+                    if depth == 0:
+                        obj_start = i
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0 and obj_start is not None:
+                        try:
+                            obj_str = search_text[obj_start:i+1]
+                            obj_str = self._sanitize_json_string(
+                                self._aggressive_json_clean(obj_str)
+                            )
+                            q = json.loads(obj_str)
+                            valid = self._validate_questions([q])
+                            if valid:
+                                salvaged.extend(valid)
+                        except Exception:
+                            pass
+                        obj_start = None
+
+            if salvaged:
+                return salvaged
+        except Exception:
+            pass
+
+        # ── LAYER 4: Regex last resort ────────────────────────────────────
+        # For extremely malformed responses, extract what we can with regex
+        try:
+            regex_questions = []
+            # Find question text patterns
+            q_matches = re.findall(
+                r'"question"\s*:\s*"([^"]{10,}?)"',
+                text, re.DOTALL
+            )
+            a_matches = re.findall(
+                r'"A"\s*:\s*"([^"]+?)"',
+                text
+            )
+            b_matches = re.findall(r'"B"\s*:\s*"([^"]+?)"', text)
+            c_matches = re.findall(r'"C"\s*:\s*"([^"]+?)"', text)
+            d_matches = re.findall(r'"D"\s*:\s*"([^"]+?)"', text)
+            ans_matches = re.findall(r'"correct_answer"\s*:\s*"([ABCD])"', text)
+
+            min_len = min(len(q_matches), len(a_matches), len(b_matches),
+                         len(c_matches), len(d_matches), len(ans_matches))
+
+            for idx in range(min_len):
+                regex_questions.append({
+                    "question": q_matches[idx],
+                    "options": {
+                        "A": a_matches[idx],
+                        "B": b_matches[idx],
+                        "C": c_matches[idx],
+                        "D": d_matches[idx]
+                    },
+                    "correct_answer": ans_matches[idx],
+                    "explanation": "See question for context.",
+                    "topic": "General",
+                    "difficulty": "medium"
+                })
+
+            if regex_questions:
+                st.warning(f"⚠️ Used fallback parser — got {len(regex_questions)} questions")
+                return regex_questions
+        except Exception:
+            pass
+
+        st.error("❌ Failed to parse questions. The AI response was malformed. Please try again.")
+        return []
+
+    @staticmethod
+    def _validate_questions(questions):
+        """Validate and normalise a list of question dicts"""
+        if not isinstance(questions, list):
+            return []
+        valid = []
+        for q in questions:
+            if not isinstance(q, dict):
+                continue
+            if 'question' not in q or 'options' not in q:
+                continue
+            opts = q['options']
+            if not isinstance(opts, dict):
+                continue
+            # Accept 4 options regardless of key names
+            if len(opts) < 4:
+                continue
+            # Normalise correct_answer to uppercase letter
+            ca = str(q.get('correct_answer', 'A')).strip().upper()
+            if len(ca) > 1:
+                ca = ca[0]
+            q['correct_answer'] = ca
+            valid.append(q)
+        return valid
+    def explain_mistake(self, question, user_answer, correct_answer, explanation):
+        """
+        Explain why a student got a question wrong
+        WITH CONTEXT INJECTION - student-aware explanation
+        """
+        prompt = f"""A student answered incorrectly.
+
+Question: {question}
+Student selected: {user_answer}
+Correct answer: {correct_answer}
+Explanation: {explanation}
+
+Explain:
+1. Why the chosen answer seemed plausible
+2. The correct reasoning
+3. One tip to avoid this mistake
+
+Keep it concise (3-4 sentences) and encouraging."""
+        
+        return self.chat(prompt, temperature=0.5, inject_context=True)
+    
+    def generate_personalized_recommendations(self, performance_data):
+        """
+        Generate personalized study recommendations
+        WITH CONTEXT INJECTION - exam-aware and student-aware
+        """
+        prompt = f"""Generate personalized study recommendations for this student:
+
+Exam Performance:
+- Score: {performance_data.get('score', 0)}/{performance_data.get('total', 0)} ({performance_data.get('percentage', 0):.1f}%)
+- Time Taken: {performance_data.get('time_taken', 0)} minutes
+- Questions Attempted: {performance_data.get('attempted', 0)}/{performance_data.get('total', 0)}
+- Weak Topics: {', '.join(performance_data.get('weak_topics', ['None identified']))}
+
+Provide:
+1. Overall performance assessment (2 sentences)
+2. Top 3 specific study recommendations tailored to their exam and weak topics
+3. Focus areas for improvement considering their strategy preference
+4. Motivational message considering their current ability level
+
+Keep it actionable and encouraging. Format with clear sections."""
+
+        return self.chat(prompt, temperature=0.6, inject_context=True)
+    
+    def generate_adaptive_questions(self, topic, difficulty, count, weak_areas=None):
+        """
+        Generate adaptive MCQ questions based on topic, difficulty, and weak areas
+        WITH CONTEXT INJECTION - personalized to student's exam and level
+        """
+        weak_context = ""
+        if weak_areas:
+            weak_context = f"\nStudent's weak areas: {', '.join(weak_areas)}. Include 1-2 questions targeting these areas."
+        
+        difficulty_guidance = {
+            'easy': 'Basic conceptual questions, straightforward calculations',
+            'medium': 'Standard exam-level questions with moderate complexity',
+            'hard': 'Advanced questions requiring deep understanding and multi-step thinking',
+            'mixed': 'Mix of easy (30%), medium (50%), and hard (20%) questions'
+        }
+        
+        prompt = f"""Generate {count} high-quality MCQ questions on the topic: {topic}
+
+Difficulty level: {difficulty}
+Guidance: {difficulty_guidance.get(difficulty, difficulty_guidance['medium'])}
+{weak_context}
+
+Requirements:
+1. Questions should match the student's exam pattern and difficulty
+2. Include clear, unambiguous options
+3. Provide brief explanations for correct answers
+4. Cover different aspects of the topic
+5. Make questions exam-relevant and practical
+6. CRITICAL: Write all math/code in plain text only — NO LaTeX, NO backslashes
+   Good: "O(n^2)", "1/2", "sqrt(n)"   Bad: "O(n^{2})", "\frac{1}{2}", "\sqrt{n}"
+7. Use only standard ASCII characters in all fields — no special symbols
+
+Return ONLY a valid JSON array in this EXACT format:
+[
+  {{
+    "question": "Clear question text",
+    "options": {{"A": "option1", "B": "option2", "C": "option3", "D": "option4"}},
+    "correct_answer": "A",
+    "explanation": "Brief explanation why this is correct",
+    "topic": "{topic}",
+    "difficulty": "{difficulty}"
+  }}
+]
+
+Generate exactly {count} questions. Return ONLY the JSON array, nothing else."""
+        
+        response = self.chat(prompt, temperature=0.7, inject_context=True)
+        
+        if response:
+            questions = self._parse_json_questions(response)
+            
+            # Ensure we have the requested count
+            if len(questions) < count:
+                st.warning(f"Generated {len(questions)} questions (requested {count})")
             
             return questions[:count] if questions else None
         
