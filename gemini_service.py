@@ -46,7 +46,7 @@ class EnhancedGeminiService:
 Remember: Tailor your response to this student's profile above."""
         return prompt
     
-    def _chat(self, messages, temperature=0.6, inject_context=True):
+    def _chat(self, messages, temperature=0.6, inject_context=True, max_tokens=4096):
         """Internal method for API calls with context injection"""
         try:
             # Inject context into user messages if enabled
@@ -58,7 +58,8 @@ Remember: Tailor your response to this student's profile above."""
             response = self.client.chat.completions.create(
                 model=self.model,
                 messages=messages,
-                temperature=temperature
+                temperature=temperature,
+                max_tokens=max_tokens
             )
             return response.choices[0].message.content
         except Exception as e:
@@ -360,26 +361,53 @@ IMPORTANT: Return ONLY the JSON array, no other text."""
         return unique
     
     def _parse_json_questions(self, response):
-        """Parse JSON questions from LLM response"""
+        """Parse JSON questions from LLM response — handles truncated responses"""
         try:
             # Clean response
-            content = response.strip()
+            text = response.strip()
             
             # Remove markdown code blocks if present
-            if '```json' in content:
-                content = content.split('```json')[1].split('```')[0]
-            elif '```' in content:
-                content = content.split('```')[1].split('```')[0]
+            if '```json' in text:
+                text = text.split('```json')[1].split('```')[0]
+            elif '```' in text:
+                text = text.split('```')[1].split('```')[0]
             
-            # Find JSON array
-            start = content.find('[')
-            end = content.rfind(']')
-            
-            if start == -1 or end == -1:
+            # Find JSON array boundaries
+            start = text.find('[')
+            if start == -1:
                 return []
             
-            # Sanitize and parse
-            json_str = self._sanitize_json_string(content[start:end + 1])
+            end = text.rfind(']')
+            
+            # If response was truncated (no closing bracket), try to recover
+            # by salvaging complete question objects already parsed
+            if end == -1 or end < start:
+                text = text[start:]
+                # Find all complete {...} objects manually
+                questions = []
+                depth = 0
+                obj_start = None
+                for i, ch in enumerate(text):
+                    if ch == '{':
+                        if depth == 0:
+                            obj_start = i
+                        depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                        if depth == 0 and obj_start is not None:
+                            try:
+                                obj_str = self._sanitize_json_string(text[obj_start:i+1])
+                                q = json.loads(obj_str)
+                                if (isinstance(q, dict) and 'question' in q 
+                                        and 'options' in q and len(q['options']) >= 4):
+                                    questions.append(q)
+                            except Exception:
+                                pass
+                            obj_start = None
+                return questions
+            
+            # Normal path — full JSON array present
+            json_str = self._sanitize_json_string(text[start:end + 1])
             questions = json.loads(json_str)
             
             # Validate questions
@@ -388,7 +416,7 @@ IMPORTANT: Return ONLY the JSON array, no other text."""
                 if (isinstance(q, dict) and 
                     'question' in q and 
                     'options' in q and 
-                    len(q['options']) == 4):
+                    len(q['options']) >= 4):
                     valid_questions.append(q)
             
             return valid_questions
@@ -483,14 +511,35 @@ Return ONLY a valid JSON array in this EXACT format:
 
 Generate exactly {count} questions. Return ONLY the JSON array, nothing else."""
         
-        response = self.chat(prompt, temperature=0.7, inject_context=True)
+        # Use high max_tokens — 20 questions as JSON needs ~3000 tokens minimum
+        response = self._chat(
+            [{"role": "user", "content": prompt}],
+            temperature=0.7,
+            inject_context=True,
+            max_tokens=8000
+        )
         
         if response:
             questions = self._parse_json_questions(response)
             
-            # Ensure we have the requested count
-            if len(questions) < count:
-                st.warning(f"Generated {len(questions)} questions (requested {count})")
+            # Retry once with smaller batch if parsing failed (truncated JSON)
+            if not questions and count > 5:
+                st.info("🔄 Retrying with smaller batch...")
+                half = count // 2
+                retry_prompt = prompt.replace(
+                    f"Generate {count} high-quality", f"Generate {half} high-quality"
+                ).replace(f"Generate exactly {count}", f"Generate exactly {half}")
+                r2 = self._chat(
+                    [{"role": "user", "content": retry_prompt}],
+                    temperature=0.5,
+                    inject_context=False,
+                    max_tokens=8000
+                )
+                if r2:
+                    questions = self._parse_json_questions(r2)
+            
+            if questions and len(questions) < count:
+                st.warning(f"⚠️ Generated {len(questions)} questions (requested {count})")
             
             return questions[:count] if questions else None
         
