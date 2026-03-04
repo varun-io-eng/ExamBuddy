@@ -56,7 +56,7 @@ from file_processors import AudioProcessor, FileProcessor
 try:
     from deep_knowledge_tracker import DeepKnowledgeTracker as BayesianKnowledgeTracker
     DKT_AVAILABLE = True
-except ImportError:
+except Exception:
     from bayesian_knowledge_tracker import BayesianKnowledgeTracker
     DKT_AVAILABLE = False
 
@@ -81,7 +81,7 @@ from ml_integration import (
 try:
     from rag_retriever import get_retriever
     RAG_AVAILABLE = True
-except ImportError:
+except Exception:
     RAG_AVAILABLE = False
 
 # ⭐ FEATURES 3 & 4: Meta-cognitive tracker + Daily Review Queue
@@ -93,7 +93,7 @@ try:
         render_sidebar_review_badge
     )
     METACOG_AVAILABLE = True
-except ImportError:
+except Exception:
     METACOG_AVAILABLE = False
 
 # ⭐⭐ COMPETITIVE ADVANTAGE TABS

@@ -12,10 +12,12 @@ import streamlit as st
 import re
 
 # ── RAG integration (graceful fallback if not installed) ─────────────────────
+# Use bare Exception: chromadb raises pydantic.v1.errors.ConfigError on
+# Python 3.14, which is not an ImportError. This catches all failure modes.
 try:
     from rag_retriever import get_retriever
     RAG_AVAILABLE = True
-except ImportError:
+except Exception:
     RAG_AVAILABLE = False
 
 

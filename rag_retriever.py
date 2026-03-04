@@ -22,17 +22,20 @@ import json
 from typing import Optional
 
 # ── optional deps ────────────────────────────────────────────────────────────
+# NOTE: Use bare Exception (not ImportError) because ChromaDB raises
+# pydantic.v1.errors.ConfigError on Python 3.14 — an upstream bug.
+# This ensures the app never crashes on import regardless of Python version.
 try:
     import chromadb
     from chromadb.utils import embedding_functions
     CHROMA_AVAILABLE = True
-except ImportError:
+except Exception:
     CHROMA_AVAILABLE = False
 
 try:
     from sentence_transformers import SentenceTransformer
     ST_AVAILABLE = True
-except ImportError:
+except Exception:
     ST_AVAILABLE = False
 
 import numpy as np

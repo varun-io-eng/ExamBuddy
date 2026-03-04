@@ -41,7 +41,9 @@ torch>=2.0.0
 
 # ── Feature 2: True RAG (Vector Knowledge Base) ──────────────────────
 # ChromaDB = local vector store (no external API needed)
-chromadb>=0.4.15
+# chromadb>=0.5.23 required for Python 3.14 pydantic v1 compatibility
+# If still seeing ConfigError, remove this line entirely — app falls back to TF-IDF
+chromadb>=0.5.23
 
 # Semantic embeddings for ChromaDB (much better than keyword search)
 # Falls back to TF-IDF automatically if not installed.
