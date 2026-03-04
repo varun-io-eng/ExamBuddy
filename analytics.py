@@ -52,14 +52,9 @@ def render_analytics_dashboard(user_id, db):
     overall = analytics['overall']
     
     if overall[0] == 0:
-        st.info("📚 Start practicing to unlock powerful analytics!")
-        st.markdown("""
-        **You'll get insights on:**
-        - Performance trends over time
-        - Topic-wise mastery levels
-        - Optimal study times
-        - Personalized recommendations
-        """)
+        # This should rarely show now — app.py guards with render_empty_state first
+        # But kept as a safety fallback
+        st.info("📚 Take your first exam from the **Upload & Take Exam** tab to unlock analytics!")
         return
     
     # Overall metrics
