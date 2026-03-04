@@ -122,9 +122,29 @@ def save_question_attempts_to_db(db, user_id, questions, answers, exam_name, ses
         correct_answer_normalized = str(correct_answer).strip().upper()
         is_correct = (user_answer_normalized == correct_answer_normalized)
         
-        subject = q.get('subject', 'General')
-        topic = q.get('topic', q.get('subtopic', 'General'))
+        subject = q.get('subject', '') or q.get('Subject', '')
+        topic = q.get('topic', '') or q.get('subtopic', '') or q.get('Topic', '')
         difficulty = q.get('difficulty', 'medium')
+        
+        # Infer subject from exam_name or topic if not set by LLM
+        if not subject or subject.strip() == '':
+            name_lower = (exam_name or '').lower()
+            topic_lower = topic.lower()
+            if any(k in name_lower or k in topic_lower for k in ['physics', 'phy']):
+                subject = 'Physics'
+            elif any(k in name_lower or k in topic_lower for k in ['chemistry', 'chem']):
+                subject = 'Chemistry'
+            elif any(k in name_lower or k in topic_lower for k in ['math', 'maths', 'calculus', 'algebra', 'dsa', 'data structure']):
+                subject = 'Mathematics'
+            elif any(k in name_lower or k in topic_lower for k in ['bio', 'biology', 'botany', 'zoology']):
+                subject = 'Biology'
+            elif any(k in name_lower or k in topic_lower for k in ['cs', 'computer', 'programming', 'python', 'java', 'code']):
+                subject = 'Computer Science'
+            else:
+                subject = exam_name.split('-')[0].strip() if exam_name else 'General'
+        
+        if not topic or topic.strip() == '':
+            topic = exam_name or 'General' 
         
         try:
             # Use record_attempt (the method that exists in AuthDatabase)
@@ -451,6 +471,10 @@ def main():
     with tab4:
         render_analytics_and_learning_dna(llm)  # 🔥 NEW: Learning DNA
     with tab5:  # ⭐ UNIFIED ML + BKT INSIGHTS TAB
+        # Show refresh nudge if user just finished an exam
+        if st.session_state.get('analytics_needs_refresh'):
+            st.success("✅ Exam saved! Your results are now reflected below.")
+            st.session_state['analytics_needs_refresh'] = False
         render_unified_insights_tab(
             st.session_state.user_id, 
             st.session_state.db,
@@ -459,6 +483,9 @@ def main():
     
     # ⭐ ADVANCED ML FEATURES TABS
     with tab6:  # Concept Coverage (moved from tab7)
+        if st.session_state.get('analytics_needs_refresh'):
+            st.success("✅ Exam saved! Concept coverage updated.")
+            st.session_state['analytics_needs_refresh'] = False
         if st.session_state.question_generator:
             render_concept_coverage_tab(
                 st.session_state.user_id,
@@ -466,9 +493,12 @@ def main():
                 st.session_state.question_generator
             )
         else:
-            st.info("🔧 Complete some practice to unlock concept coverage analysis.")
+            st.info("🔧 Take an exam from the 'Upload & Take Exam' tab to unlock concept coverage analysis.")
     
     with tab7:  # Knowledge Graph (replaces old BKT tab since BKT is now in tab5)
+        if st.session_state.get('analytics_needs_refresh'):
+            st.success("✅ Exam saved! Knowledge graph updated.")
+            st.session_state['analytics_needs_refresh'] = False
         render_knowledge_graph(st.session_state.user_id, st.session_state.db)
     
     # ⭐⭐ NEW EXCEPTIONAL TABS - COMPETITIVE ADVANTAGE FEATURES
@@ -2205,6 +2235,22 @@ def render_exam_results(llm):
             'total_score': total_score, 'max_score': max_score,
             'percentage': percentage
         }
+        
+        # ── Refresh BKT/DKT tracker so all tabs see fresh data immediately ──
+        # Without this, ML+BKT / Knowledge Graph / Concept Coverage tabs
+        # show empty state until the user manually refreshes the page.
+        try:
+            if st.session_state.get('bkt_tracker') and st.session_state.get('user_id'):
+                tracker = st.session_state.bkt_tracker
+                # Re-seed tracker from DB so in-memory state matches what was just saved
+                if hasattr(tracker, 'load_from_db'):
+                    tracker.load_from_db(st.session_state.user_id)
+                # Force ML trainer to pick up new data on next render
+                if st.session_state.get('ml_trainer'):
+                    st.session_state.ml_trainer_needs_update = True
+            st.session_state['analytics_needs_refresh'] = True
+        except Exception:
+            pass  # Non-critical — tabs will still work on next render
 
     # ── read cached values ─────────────────────────────────────────────
     r = st.session_state.upload_results_cached

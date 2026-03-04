@@ -504,6 +504,7 @@ Return ONLY a valid JSON array in this EXACT format:
     "options": {{"A": "option1", "B": "option2", "C": "option3", "D": "option4"}},
     "correct_answer": "A",
     "explanation": "Brief explanation why this is correct",
+    "subject": "Physics/Chemistry/Mathematics/Biology/Computer Science (pick correct one)",
     "topic": "{topic}",
     "difficulty": "{difficulty}"
   }}
