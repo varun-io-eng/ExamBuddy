@@ -446,7 +446,7 @@ def render_daily_review_queue(user_id: str, dkt_tracker,
             if on_practice_click:
                 if st.button(
                     f"🚀 Practice {item['topic']} Now",
-                    key=f"review_btn_{i}_{item['topic'][:10]}",
+                    key=f"review_btn_{i}_{abs(hash(item['subject'] + item['topic']))}",  # full hash avoids truncation collisions
                     use_container_width=True,
                     type="primary"
                 ):
