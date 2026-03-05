@@ -656,28 +656,14 @@ def main():
             else:
                 render_knowledge_graph(st.session_state.user_id, st.session_state.db)
 
-    # ── Tab 6: AI Study Coach ─────────────────────────────────────────────
+    # ── Tab 6: AI Study Coach — always open (video lectures don't need exam data)
     with tab6:
-        _atm6 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _atm6 == 0:
-            render_empty_state(
-                "AI Study Coach", icon="🎓",
-                features=[
-                    "📊 Personalized exam readiness score",
-                    "📅 Day-by-day study plan tailored to your gaps",
-                    "🎓 Exam day strategy with time allocation",
-                    "⏱️ Pomodoro timer with focus sessions",
-                ]
-            )
-        elif st.session_state.bkt_tracker:
-            render_ai_study_coach_tab(
-                st.session_state.user_id,
-                st.session_state.db,
-                st.session_state.bkt_tracker,
-                llm
-            )
-        else:
-            st.info("⏳ Tracker initializing... please refresh.")
+        render_ai_study_coach_tab(
+            st.session_state.user_id,
+            st.session_state.db,
+            st.session_state.get('bkt_tracker'),
+            llm
+        )
 
     # ── Tab 7: Competitive Intel ──────────────────────────────────────────
     with tab7:

@@ -477,17 +477,17 @@ def render_prereq_knowledge_graph(user_id, db):
     mastery_map = {row[1]: row[3] for row in rows}
 
     # Find all topics with gaps and their prerequisite chains
+    # Also includes topics not in DAG — any topic below threshold is a gap
     broken_chains = []
     for subj, topic, attempts, mastery in rows:
-        if mastery < PREREQ_MASTERY_THRESHOLD and topic in PREREQ_DAG:
+        if mastery < PREREQ_MASTERY_THRESHOLD:
             prereqs = PREREQ_DAG.get(topic, [])
-            if prereqs:
-                broken_chains.append({
-                    'topic': topic,
-                    'mastery': mastery,
-                    'prereqs': prereqs,
-                    'subject': subj
-                })
+            broken_chains.append({
+                'topic':   topic,
+                'mastery': mastery,
+                'prereqs': prereqs,   # empty list if not in DAG — still shown as gap
+                'subject': subj
+            })
 
     # ── Subject-wise mastery overview ────────────────────────────────────
     subjects = {}
@@ -568,7 +568,27 @@ def render_prereq_knowledge_graph(user_id, db):
             st.markdown("</div>", unsafe_allow_html=True)
 
     else:
-        st.success("✅ No broken prerequisite chains detected! All your foundations look solid.")
+        # Only show "solid" if truly no weak topics at all
+        all_mastered = all(r[3] >= PREREQ_MASTERY_THRESHOLD for r in rows)
+        if all_mastered:
+            st.success("✅ No broken prerequisite chains detected! All your foundations look solid.")
+        else:
+            # Has weak topics but none match DAG — still show them
+            weak_rows = [(r[0], r[1], r[2], r[3]) for r in rows if r[3] < PREREQ_MASTERY_THRESHOLD]
+            st.markdown("---")
+            st.markdown("### ⚠️ Topics Needing Work")
+            st.caption("These topics have low mastery — practice them to strengthen your foundation")
+            for subj, topic, attempts, mastery in weak_rows:
+                pct = mastery * 100
+                st.markdown(
+                    f"<div style='background:#1a1a2e;border:1px solid #e74c3c;"
+                    f"border-radius:8px;padding:12px;margin:6px 0'>"
+                    f"🔴 <b>{topic}</b> ({subj}) — "
+                    f"<span style='color:#e74c3c'>{pct:.0f}% mastery</span> · "
+                    f"{attempts} attempts"
+                    f"</div>",
+                    unsafe_allow_html=True
+                )
 
     # ── Stats ─────────────────────────────────────────────────────────────
     st.markdown("---")

@@ -444,9 +444,12 @@ def render_daily_review_queue(user_id: str, dkt_tracker,
                 st.warning(f"📉 Accuracy declining ({item['velocity']*100:+.1f}%/session)")
 
             if on_practice_click:
+                # Key uses index + hash of subject+topic to guarantee uniqueness
+                # even if the same topic appears multiple times in the queue
+                _btn_key = f"review_btn_{i}_{abs(hash(item['subject'] + ':' + item['topic'] + str(i)))}"
                 if st.button(
                     f"🚀 Practice {item['topic']} Now",
-                    key=f"review_btn_{i}_{abs(hash(item['subject'] + item['topic']))}",  # full hash avoids truncation collisions
+                    key=_btn_key,
                     use_container_width=True,
                     type="primary"
                 ):
