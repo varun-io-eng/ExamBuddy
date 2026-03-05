@@ -773,40 +773,64 @@ def export_study_plan_to_pdf(plan):
 
 def render_ai_study_coach_tab(user_id, db, bkt_tracker, llm):
     """
-    Main render function for AI Study Coach tab
-    
-    FIXED:
-    - Plans generate for all days
-    - PDF export button is visible
-    - PDF contains all days
-    - Function signature matches original
+    AI Study Coach tab.
+    Only the Video Lectures tab is active.
+    Study Plan, Exam Readiness, Exam Strategy are locked until more data.
     """
-    
-    st.title("🎯 AI Study Coach")
-    st.caption("Your personalized learning companion")
-    
-    # Initialize coach
-    coach = AIStudyCoach(db, bkt_tracker, llm)
-    
-    # Tabs
+    st.title("🎓 AI Study Coach")
+    st.caption("Video lectures, Pomodoro timer, and study tools")
+
     tab1, tab2, tab3, tab4 = st.tabs([
-        "📚 Study Plan Generator",
-        "🎥 Live Study Session",
-        "📊 Exam Readiness",
-        "🎓 Exam Strategy"
+        "🎥 Video Lectures",
+        "📚 Study Plan  🔒",
+        "📊 Exam Readiness  🔒",
+        "🎓 Exam Strategy  🔒",
     ])
-    
+
     with tab1:
-        render_study_plan_generator(user_id, coach)
-    
-    with tab2:
         render_live_study_session(user_id, db, llm)
-    
+
+    with tab2:
+        st.markdown("## 📚 Study Plan Generator")
+        st.info(
+            "🔒 **Coming soon** — Complete at least **10 practice sessions** "
+            "to unlock your personalized AI study plan."
+        )
+        st.markdown("""
+        **Once unlocked, you'll get:**
+        - 📅 Day-by-day study schedule tailored to your gaps
+        - 🎯 Priority topics based on your mastery scores
+        - ⏱️ Time estimates per topic
+        - 📄 Downloadable PDF plan
+        """)
+
     with tab3:
-        render_readiness_report(user_id, coach)
-    
+        st.markdown("## 📊 Exam Readiness Assessment")
+        st.info(
+            "🔒 **Coming soon** — Take at least **3 full exams** "
+            "to unlock your readiness score."
+        )
+        st.markdown("""
+        **Once unlocked, you'll see:**
+        - 🎯 Overall readiness % with confidence level
+        - 💪 Your strongest topics
+        - ⚠️ Critical gaps to fix before exam day
+        - 📈 Hours needed to reach target score
+        """)
+
     with tab4:
-        render_exam_strategy(user_id, coach)
+        st.markdown("## 🎓 Exam Day Strategy")
+        st.info(
+            "🔒 **Coming soon** — Complete your exam profile to unlock "
+            "a personalised exam-day strategy."
+        )
+        st.markdown("""
+        **Once unlocked, you'll get:**
+        - ⏱️ Time allocation per subject
+        - 🎲 Question selection strategy
+        - 🧘 Focus tips for exam day
+        - 📋 Subject-wise approach based on your strengths
+        """)
 
 
 def render_study_plan_generator(user_id, coach):
@@ -938,28 +962,71 @@ def render_live_study_session(user_id, db=None, llm=None):
     if 'current_topic' not in st.session_state:
         st.session_state.current_topic = None
     
-    # Subject and topic selection
+    # Subject and topic selection — filtered by user's exam type
     st.markdown("#### 📚 Choose What to Study")
-    
+
+    # Map college exam subjects to Computer Science (which holds all CS videos)
+    SUBJECT_TO_VIDEO_KEY = {
+        'DSA':               'Computer Science',
+        'DBMS':              'Computer Science',
+        'Operating Systems': 'Computer Science',
+        'Computer Networks': 'Computer Science',
+        'OOPs':              'Computer Science',
+        'Computer Science':  'Computer Science',
+        'Physics':           'Physics',
+        'Chemistry':         'Chemistry',
+        'Mathematics':       'Mathematics',
+        'Biology':           'Biology',
+    }
+
+    # Map college exam subjects to specific sub-category of Computer Science videos
+    COLLEGE_TOPIC_FILTER = {
+        'DSA':               ['Data Structures', 'Algorithms'],
+        'DBMS':              ['DBMS'],
+        'Operating Systems': ['Operating Systems'],
+        'Computer Networks': ['Computer Networks'],
+        'OOPs':              ['Data Structures'],  # closest available
+    }
+
+    # Get user's allowed subjects from session (set during onboarding)
+    user_subjects = st.session_state.get('available_subjects') or list(YOUTUBE_VIDEOS.keys())
+    # Only show subjects that have videos
+    displayable_subjects = [s for s in user_subjects if SUBJECT_TO_VIDEO_KEY.get(s) in YOUTUBE_VIDEOS]
+    if not displayable_subjects:
+        displayable_subjects = list(YOUTUBE_VIDEOS.keys())
+
     col1, col2 = st.columns(2)
-    
+
     with col1:
-        subject = st.selectbox(
+        display_subject = st.selectbox(
             "Subject",
-            options=list(YOUTUBE_VIDEOS.keys()),
+            options=displayable_subjects,
             key='study_subject'
         )
-    
+
+    # Map display subject → actual YOUTUBE_VIDEOS key
+    video_key = SUBJECT_TO_VIDEO_KEY.get(display_subject, display_subject)
+
     with col2:
-        available_topics = get_available_topics(subject)
+        # For college exam subjects, filter to relevant topic categories only
+        if display_subject in COLLEGE_TOPIC_FILTER:
+            allowed_categories = COLLEGE_TOPIC_FILTER[display_subject]
+            topics = []
+            for cat in allowed_categories:
+                cat_videos = YOUTUBE_VIDEOS.get('Computer Science', {}).get(cat, {})
+                if isinstance(cat_videos, dict):
+                    topics.extend(cat_videos.keys())
+        else:
+            topics = get_available_topics(video_key)
+
         topic = st.selectbox(
             "Topic",
-            options=available_topics if available_topics else ["General"],
+            options=topics if topics else ["General"],
             key='study_topic'
         )
-    
-    # Get video URL
-    video_url = get_video_url(subject, topic)
+
+    # Get video URL using the mapped key
+    video_url = get_video_url(video_key, topic)
     
     # Video player
     if video_url:

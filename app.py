@@ -232,16 +232,17 @@ def render_empty_state(tab_name, features, icon="🔒"):
 
 def render_onboarding_screen():
     """
-    3-step onboarding on first login.
-    Picks exam type → shows subjects for that exam → picks confidence level.
-    Saves to DB and pre-fills session state.
+    2-step onboarding on first login.
+    Step 1 — Which exam are you preparing for?
+    Step 2 — What is your current level?
+    No subject selection — subjects are auto-assigned based on exam.
     """
     st.markdown("""
     <div style="text-align:center;padding:2rem 0 1rem 0;">
         <div style="font-size:4rem;">🎓</div>
         <h1 style="font-size:2.5rem;font-weight:800;">Welcome to Exam Buddy Pro!</h1>
         <p style="font-size:1.1rem;color:#94a3b8;">
-            Let's personalise your experience. Takes 30 seconds.
+            Let's set up your profile. Takes 20 seconds.
         </p>
     </div>
     """, unsafe_allow_html=True)
@@ -249,6 +250,7 @@ def render_onboarding_screen():
 
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
+
         # Step 1 — Exam type
         st.markdown("### 🎯 Step 1 — Which exam are you preparing for?")
         exam_options = list(EXAM_SUBJECTS.keys())
@@ -257,20 +259,17 @@ def render_onboarding_screen():
             key="onboard_exam"
         )
 
-        # Step 2 — Subject list updates dynamically based on exam
+        # Show subjects that will be unlocked — read-only preview, not a selector
         subjects_for_exam = get_subjects_for_exam(exam_type)
-        st.markdown(f"### 📚 Step 2 — Starting subject for **{exam_type}**")
-        subject_labels = [
+        subject_pills = "  ".join(
             f"{EXAM_SUBJECT_ICONS.get(s, '📖')} {s}" for s in subjects_for_exam
-        ]
-        chosen_label = st.selectbox(
-            "Subject", subject_labels, label_visibility="collapsed",
-            key="onboard_subject"
         )
-        onboarding_subject = chosen_label.split(" ", 1)[1]  # strip icon
+        st.caption(f"Subjects included: {subject_pills}")
 
-        # Step 3 — Level
-        st.markdown("### 💪 Step 3 — Your current level?")
+        st.markdown("")
+
+        # Step 2 — Level
+        st.markdown("### 💪 Step 2 — What is your current level?")
         level = st.radio(
             "Level", ["Beginner", "Average", "Strong"],
             horizontal=True, label_visibility="collapsed",
@@ -279,13 +278,15 @@ def render_onboarding_screen():
 
         st.markdown("---")
         if st.button("🚀 Let's Start!", type="primary", use_container_width=True):
+            # Default starting subject = first subject in exam list
+            default_subject = subjects_for_exam[0] if subjects_for_exam else "General"
             saved = st.session_state.db.save_onboarding(
-                st.session_state.user_id, exam_type, onboarding_subject
+                st.session_state.user_id, exam_type, default_subject
             )
             if saved:
                 st.session_state['onboarding_complete']  = True
                 st.session_state['exam_type']            = exam_type
-                st.session_state['current_subject']      = onboarding_subject
+                st.session_state['current_subject']      = default_subject
                 st.session_state['available_subjects']   = subjects_for_exam
                 difficulty_map = {"Beginner": "Easy", "Average": "Medium", "Strong": "Hard"}
                 st.session_state['initial_difficulty']   = difficulty_map.get(level, "Medium")
@@ -2132,8 +2133,11 @@ def render_custom_exam_creator(llm):
     col1, col2 = st.columns(2)
     
     with col1:
-        subject = st.selectbox("Subject", 
-            ["Physics", "Chemistry", "Mathematics", "Biology", "Computer Science"],
+        # Use subjects from user's exam type (set during onboarding)
+        _exam_subjects = st.session_state.get('available_subjects') or \
+                         get_subjects_for_exam(st.session_state.get('exam_type', 'JEE Main'))
+        subject = st.selectbox("Subject",
+            _exam_subjects,
             key="custom_exam_subject")
         
         topic = st.text_input("Topic", 
