@@ -31,9 +31,22 @@ class AuthDatabase:
                 salt TEXT NOT NULL,
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                 last_login TEXT,
-                theme_preference TEXT DEFAULT 'dark'
+                theme_preference TEXT DEFAULT 'dark',
+                exam_type TEXT DEFAULT 'JEE',
+                onboarding_subject TEXT DEFAULT 'Physics',
+                is_onboarded INTEGER DEFAULT 0
             )
         """)
+        # Migrate existing DBs — add columns if they don't exist yet
+        for col, definition in [
+            ("exam_type",          "TEXT DEFAULT 'JEE'"),
+            ("onboarding_subject", "TEXT DEFAULT 'Physics'"),
+            ("is_onboarded",       "INTEGER DEFAULT 0"),
+        ]:
+            try:
+                cursor.execute(f"ALTER TABLE users ADD COLUMN {col} {definition}")
+            except Exception:
+                pass  # column already exists
         
         # User sessions table
         cursor.execute("""
@@ -424,6 +437,47 @@ class AuthDatabase:
         """Get learning insights for user"""
         # Return empty list for now
         return []
+
+    # ==================== ONBOARDING METHODS ====================
+
+    def get_onboarding_status(self, user_id):
+        """Returns dict with is_onboarded, exam_type, onboarding_subject"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT is_onboarded, exam_type, onboarding_subject
+                FROM users WHERE user_id = ?
+            """, (user_id,))
+            row = cursor.fetchone()
+            if row:
+                return {
+                    'is_onboarded':       bool(row[0]),
+                    'exam_type':          row[1] or 'JEE',
+                    'onboarding_subject': row[2] or 'Physics',
+                }
+        except Exception:
+            pass
+        return {'is_onboarded': False, 'exam_type': 'JEE', 'onboarding_subject': 'Physics'}
+
+    def save_onboarding(self, user_id, exam_type, onboarding_subject):
+        """Save onboarding choices and mark user as onboarded"""
+        cursor = self.conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE users
+                SET exam_type=?, onboarding_subject=?, is_onboarded=1
+                WHERE user_id=?
+            """, (exam_type, onboarding_subject, user_id))
+            self.conn.commit()
+            return True
+        except Exception:
+            return False
+
+    def get_exam_type(self, user_id):
+        """Quick helper to get user's exam type"""
+        status = self.get_onboarding_status(user_id)
+        return status.get('exam_type', 'JEE')
+
 
 # Export
 __all__ = ['AuthDatabase']
