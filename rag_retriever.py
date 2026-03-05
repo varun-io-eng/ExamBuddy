@@ -458,7 +458,7 @@ class RAGRetriever:
         if self._chroma_col is not None:
             return self._chroma_retrieve(query, subject, k)
         elif self._tfidf is not None:
-            return self._tfidf_retrieve(query, k)
+            return self._tfidf_retrieve(query, k, subject=subject)
         return []
 
     def _chroma_retrieve(self, query, subject, k):
@@ -483,8 +483,24 @@ class RAGRetriever:
         except Exception:
             return self._tfidf_retrieve(query, k) if self._tfidf else []
 
-    def _tfidf_retrieve(self, query, k):
-        results = self._tfidf.query(query, k)
+    def _tfidf_retrieve(self, query, k, subject=None):
+        """TF-IDF retrieval with subject filtering when subject is provided"""
+        # If subject given, filter knowledge base to that subject first
+        if subject:
+            subject_lower = subject.lower()
+            filtered_docs = [
+                d for d in KNOWLEDGE_BASE
+                if d['subject'].lower() == subject_lower
+            ]
+            # Only use filtered if we have enough docs, else fall back to all
+            if len(filtered_docs) >= 2:
+                filtered_retriever = TFIDFRetriever(filtered_docs)
+                results = filtered_retriever.query(query, k)
+            else:
+                results = self._tfidf.query(query, k)
+        else:
+            results = self._tfidf.query(query, k)
+
         return [
             {
                 'content': r['doc']['content'],
@@ -534,18 +550,91 @@ Instructions:
 """
         return prompt
 
+    @staticmethod
+    def detect_subject(question: str) -> str:
+        """
+        Auto-detect subject from question text so RAG retrieves
+        from the correct book (Maths doubt → RD Sharma, not HC Verma).
+        """
+        q = question.lower()
+        
+        # Physics keywords
+        if any(k in q for k in [
+            'velocity', 'acceleration', 'force', 'newton', 'energy', 'work',
+            'momentum', 'gravity', 'electric', 'magnetic', 'wave', 'optics',
+            'thermodynamics', 'heat', 'capacitor', 'resistor', 'circuit',
+            'projectile', 'torque', 'friction', 'potential', 'current',
+            'photon', 'electron', 'nucleus', 'radioactive', 'lens', 'mirror'
+        ]):
+            return 'Physics'
+        
+        # Chemistry keywords
+        if any(k in q for k in [
+            'molecule', 'atom', 'bond', 'reaction', 'acid', 'base', 'salt',
+            'organic', 'inorganic', 'equilibrium', 'oxidation', 'reduction',
+            'mole', 'molarity', 'enthalpy', 'entropy', 'catalyst', 'polymer',
+            'hydrocarbon', 'alcohol', 'aldehyde', 'ketone', 'amine', 'benzene',
+            'electrolysis', 'electrode', 'periodic', 'valence', 'hybridisation',
+            'isomer', 'ph', 'buffer', 'titration', 'precipitation'
+        ]):
+            return 'Chemistry'
+        
+        # Mathematics keywords
+        if any(k in q for k in [
+            'integral', 'derivative', 'differentiate', 'integrate', 'limit',
+            'matrix', 'determinant', 'vector', 'probability', 'permutation',
+            'combination', 'binomial', 'trigonometry', 'sine', 'cosine', 'tangent',
+            'logarithm', 'complex number', 'quadratic', 'polynomial', 'sequence',
+            'series', 'arithmetic', 'geometric', 'parabola', 'ellipse', 'hyperbola',
+            'circle', 'straight line', 'angle', 'triangle', 'coordinate', 'calculus',
+            'function', 'domain', 'range', 'continuity', 'differentiability'
+        ]):
+            return 'Mathematics'
+        
+        # Biology keywords
+        if any(k in q for k in [
+            'cell', 'tissue', 'organ', 'dna', 'rna', 'protein', 'enzyme',
+            'photosynthesis', 'respiration', 'mitosis', 'meiosis', 'genetics',
+            'chromosome', 'mutation', 'evolution', 'ecosystem', 'biodiversity',
+            'hormone', 'nervous', 'digestion', 'circulation', 'excretion',
+            'reproduction', 'plant', 'animal', 'bacteria', 'virus', 'fungi'
+        ]):
+            return 'Biology'
+        
+        # Computer Science keywords
+        if any(k in q for k in [
+            'algorithm', 'array', 'linked list', 'tree', 'graph', 'stack',
+            'queue', 'sorting', 'searching', 'dynamic programming', 'recursion',
+            'complexity', 'time complexity', 'space complexity', 'binary',
+            'database', 'sql', 'operating system', 'process', 'thread',
+            'network', 'protocol', 'compiler', 'pointer', 'memory',
+            'hash', 'heap', 'bfs', 'dfs', 'dijkstra', 'big o'
+        ]):
+            return 'Computer Science'
+        
+        return None  # Unknown — will search across all subjects
+
     def get_citation_context(self, question: str, subject: str = None) -> dict:
         """
         Returns retrieved chunks + formatted citation string.
-        Use this to show 'View Sources' in the UI.
+        Auto-detects subject if not provided so correct book is cited.
         """
-        chunks = self.retrieve(question, subject=subject, k=3)
+        # Auto-detect subject from question if not explicitly provided
+        detected_subject = subject or self.detect_subject(question)
+        
+        chunks = self.retrieve(question, subject=detected_subject, k=3)
+        
+        # If subject-filtered retrieval returned nothing, try without filter
+        if not chunks and detected_subject:
+            chunks = self.retrieve(question, subject=None, k=3)
+        
         return {
             'chunks': chunks,
             'citation_text': '\n'.join(
                 f"• {c['source']} ({c['topic']})" for c in chunks
             ),
-            'has_sources': len(chunks) > 0
+            'has_sources': len(chunks) > 0,
+            'detected_subject': detected_subject
         }
 
 

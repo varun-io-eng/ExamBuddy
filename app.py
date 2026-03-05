@@ -98,6 +98,11 @@ except Exception:
 
 # ⭐⭐ COMPETITIVE ADVANTAGE TABS
 from ai_study_coach import render_ai_study_coach_tab
+try:
+    from prerequisite_engine import PrerequisiteEngine, render_prerequisite_intervention, render_prereq_knowledge_graph
+    PREREQ_AVAILABLE = True
+except Exception as e:
+    PREREQ_AVAILABLE = False
 from competitive_intelligence import render_competitive_intelligence_tab
 
 
@@ -148,8 +153,9 @@ def save_question_attempts_to_db(db, user_id, questions, answers, exam_name, ses
     return attempts_saved
 
 
+
 def get_user_attempt_count(db, user_id):
-    """Returns total number of attempts the user has made — used for empty state checks"""
+    """Returns total number of attempts the user has made"""
     try:
         cursor = db.conn.cursor()
         cursor.execute("SELECT COUNT(*) FROM attempts WHERE user_id=?", (user_id,))
@@ -160,38 +166,27 @@ def get_user_attempt_count(db, user_id):
 
 
 def render_empty_state(tab_name, features, icon="🔒"):
-    """
-    Render a friendly empty state with a redirect button to the exam tab.
-    Shows what the user will see once they take their first exam.
-    """
+    """Friendly empty state with redirect button to exam tab"""
     st.markdown(f"## {icon} {tab_name}")
     st.markdown("---")
-    
     col1, col2, col3 = st.columns([1, 2, 1])
     with col2:
         st.markdown(
-            f"""
-            <div style="text-align:center; padding: 40px 20px;">
-                <div style="font-size: 64px; margin-bottom: 16px;">📄</div>
-                <h3 style="margin-bottom: 8px;">No exam data yet</h3>
-                <p style="color: #888; margin-bottom: 24px;">
-                    Take your first exam to unlock this tab.<br/>
-                    It only takes a few minutes!
-                </p>
-            </div>
-            """,
+            f"""<div style="text-align:center;padding:40px 20px;">
+                <div style="font-size:64px;margin-bottom:16px;">📄</div>
+                <h3>No exam data yet</h3>
+                <p style="color:#888;margin-bottom:24px;">
+                    Take your first exam to unlock this tab!
+                </p></div>""",
             unsafe_allow_html=True
         )
-        
         st.markdown("**Once you take an exam, you'll see:**")
         for feature in features:
             st.markdown(f"  {feature}")
-        
         st.markdown("---")
         st.info("👇 Go to the **Upload & Take Exam** tab to get started")
-        
-        if st.button("🚀 Take My First Exam", type="primary", use_container_width=True, key=f"goto_exam_{tab_name}"):
-            # Switch to tab 3 by setting a flag — Streamlit reruns and tab3 becomes active
+        if st.button("🚀 Take My First Exam", type="primary",
+                     use_container_width=True, key=f"goto_exam_{tab_name.replace(' ','_')}"):
             st.session_state['goto_tab'] = 3
             st.rerun()
 
@@ -425,6 +420,74 @@ def initialize_advanced_features(db, llm):
     return True
 
 
+
+def render_onboarding_screen():
+    """
+    3-step onboarding shown once on first login.
+    Saves exam_type + starting subject to DB, marks user as onboarded.
+    """
+    st.markdown("""
+    <div style="text-align:center;padding:2rem 0 1rem 0;">
+        <div style="font-size:4rem;">🎓</div>
+        <h1 style="font-size:2.5rem;font-weight:800;">Welcome to Exam Buddy Pro!</h1>
+        <p style="font-size:1.1rem;color:#94a3b8;">
+            Let's personalise your experience. Takes 30 seconds.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown("---")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+
+        # Step 1 — Exam type
+        st.markdown("### 🎯 Step 1 — Which exam are you preparing for?")
+        exam_type = st.selectbox(
+            "Select your target exam",
+            ["JEE Main", "JEE Advanced", "NEET", "GATE", "UPSC", "CAT", "Other"],
+            label_visibility="collapsed"
+        )
+
+        st.markdown("### 📚 Step 2 — What's your starting subject?")
+        subject_options = ["Physics", "Chemistry", "Mathematics", "Biology", "Computer Science"]
+        onboarding_subject = st.selectbox(
+            "Select your starting subject",
+            subject_options,
+            label_visibility="collapsed"
+        )
+
+        st.markdown("### 💪 Step 3 — What's your current level?")
+        level_cols = st.columns(3)
+        level = st.radio(
+            "Level",
+            ["Beginner", "Average", "Strong"],
+            horizontal=True,
+            label_visibility="collapsed"
+        )
+
+        st.markdown("")
+        st.markdown("---")
+
+        if st.button("🚀 Let's Start!", type="primary", use_container_width=True):
+            # Save to DB
+            saved = st.session_state.db.save_onboarding(
+                st.session_state.user_id,
+                exam_type,
+                onboarding_subject
+            )
+            if saved:
+                st.session_state['onboarding_complete'] = True
+                st.session_state['exam_type']           = exam_type
+                st.session_state['current_subject']     = onboarding_subject
+                # Pre-fill difficulty based on level
+                difficulty_map = {"Beginner": "Easy", "Average": "Medium", "Strong": "Hard"}
+                st.session_state['initial_difficulty'] = difficulty_map.get(level, "Medium")
+                st.success("✅ All set! Redirecting to your exam prep dashboard...")
+                st.rerun()
+            else:
+                st.error("Something went wrong. Please try again.")
+
 def main():
     """Main application"""
     # Apply theme
@@ -437,14 +500,26 @@ def main():
     if not st.session_state.authenticated:
         render_login_page()
         return
-    
+
+    # ── ONBOARDING: show 3-step screen on first login ─────────────────────
+    if not st.session_state.get('onboarding_complete'):
+        status = st.session_state.db.get_onboarding_status(st.session_state.user_id)
+        if not status['is_onboarded']:
+            render_onboarding_screen()
+            return
+        else:
+            # Already onboarded — store prefs in session
+            st.session_state['onboarding_complete'] = True
+            st.session_state['exam_type']           = status['exam_type']
+            st.session_state['current_subject']     = status['onboarding_subject']
+
     st.markdown(f'''
     <div style="text-align: center; padding: 1rem 0;">
         <h1 style="font-size: 3rem; font-weight: 700;">
-            🎓 Exam Buddy Pro Ultimate
+            🎓 Exam Buddy Pro
         </h1>
         <p style="font-size: 1.1rem;">
-            Welcome, {st.session_state.username}! 🚀 Root-Cause Analysis • Learning DNA • Time Intelligence
+            Welcome back, {st.session_state.username}! 🚀
         </p>
     </div>
     ''', unsafe_allow_html=True)
@@ -477,77 +552,36 @@ def main():
     render_sidebar()
     
     # ALL TABS - ⭐⭐ UPDATED WITH 9+ FEATURES
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs([
-        "🧠 Advanced Doubt Solver",
-        "🎯 Adaptive Practice (3 Modes)",
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8 = st.tabs([
+        "🧠 Doubt Solver",
+        "🎯 Adaptive Practice",
         "📝 Upload & Take Exam",
-        "📊 Analytics & Learning DNA",
-        "🧠 ML + DKT Insights",
         "🗺️ Concept Coverage",
-        "🎓 Knowledge Graph",
-        "🎯 AI Study Coach",
+        "🕸️ Knowledge Graph",
+        "🎓 AI Study Coach",
         "🏆 Competitive Intel",
-        "📅 Daily Review Queue"   # ⭐ FEATURE 4
+        "📅 Daily Review",
     ])
-    
+
+    # NOTE: Analytics & ML+BKT tabs removed from UI — still run in background
+    # DKT ability, BKT mastery, and analytics are used internally by all tabs
+
     with tab1:
         render_advanced_doubt_solver(llm)
+
     with tab2:
-        render_adaptive_practice_with_modes(llm)  # 🔥 NEW: 3 MODES
+        render_adaptive_practice_with_modes(llm)
+
     with tab3:
         render_upload_exam_mode(llm)
-    with tab4:
-        _attempts = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts == 0:
-            render_empty_state(
-                "Analytics & Learning DNA",
-                [
-                    "📈 Accuracy trend over time",
-                    "🎯 Topic-wise performance breakdown",
-                    "⏱️ Time analysis per question",
-                    "🧬 Your Learning DNA profile",
-                    "💡 Personalized AI study recommendations",
-                ],
-                icon="📊"
-            )
-        else:
-            render_analytics_and_learning_dna(llm)
-    with tab5:  # ⭐ UNIFIED ML + BKT INSIGHTS TAB
-        if st.session_state.get('analytics_needs_refresh'):
-            st.success("✅ Exam saved! Your results are now reflected below.")
-            st.session_state['analytics_needs_refresh'] = False
-        _attempts5 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts5 == 0:
-            render_empty_state(
-                "ML + BKT Insights",
-                [
-                    "🎯 Your ability level out of 5",
-                    "🧠 Bayesian mastery % per topic",
-                    "📉 Forgetting risk per concept",
-                    "🔗 Cross-topic dependency predictions (DKT)",
-                    "📊 Predicted exam score",
-                    "💡 Context-aware AI recommendations",
-                ],
-                icon="🧠"
-            )
-        else:
-            render_unified_insights_tab(
-                st.session_state.user_id,
-                st.session_state.db,
-                exam_type=st.session_state.get('exam_type', 'JEE')
-            )
-    
-    # ⭐ ADVANCED ML FEATURES TABS
-    with tab6:  # Concept Coverage
-        if st.session_state.get('analytics_needs_refresh'):
-            st.success("✅ Exam saved! Concept coverage updated.")
-            st.session_state['analytics_needs_refresh'] = False
-        _attempts6 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts6 == 0:
+
+    with tab4:  # Concept Coverage
+        _attempts4 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
+        if _attempts4 == 0:
             render_empty_state(
                 "Concept Coverage",
                 [
-                    "🗺️ Visual map of topics you've covered vs remaining",
+                    "🗺️ Visual map of topics covered vs remaining",
                     "✅ Mastered concepts (green)",
                     "⚠️ Weak concepts needing work (yellow/red)",
                     "📋 Syllabus completion percentage",
@@ -562,39 +596,38 @@ def main():
                 st.session_state.question_generator
             )
         else:
-            st.info("🔧 Question generator initializing... Please try again in a moment.")
-    
-    with tab7:  # Knowledge Graph
-        if st.session_state.get('analytics_needs_refresh'):
-            st.success("✅ Exam saved! Knowledge graph updated.")
-            st.session_state['analytics_needs_refresh'] = False
-        _attempts7 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts7 == 0:
+            st.info("⏳ Question generator initializing... Please try again in a moment.")
+
+    with tab5:  # Knowledge Graph with prerequisite chains
+        _attempts5 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
+        if _attempts5 == 0:
             render_empty_state(
                 "Knowledge Graph",
                 [
                     "🕸️ Visual graph of your knowledge across all subjects",
                     "🟢 Green nodes = mastered topics",
                     "🔴 Red nodes = topics needing work",
-                    "🔗 Lines showing topic connections and dependencies",
-                    "📈 Node size grows with your mastery level",
+                    "🔗 Prerequisite chains showing root-cause gaps",
+                    "🎯 One-click Fix buttons to attack weak prerequisites",
                 ],
                 icon="🕸️"
             )
         else:
-            render_knowledge_graph(st.session_state.user_id, st.session_state.db)
-    
-    # ⭐⭐ NEW EXCEPTIONAL TABS - COMPETITIVE ADVANTAGE FEATURES
-    with tab8:  # AI Study Coach
-        _attempts8 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts8 == 0:
+            if PREREQ_AVAILABLE:
+                render_prereq_knowledge_graph(st.session_state.user_id, st.session_state.db)
+            else:
+                render_knowledge_graph(st.session_state.user_id, st.session_state.db)
+
+    with tab6:  # AI Study Coach
+        _attempts6 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
+        if _attempts6 == 0:
             render_empty_state(
                 "AI Study Coach",
                 [
                     "📊 Personalized exam readiness score",
                     "📅 Day-by-day study plan tailored to your gaps",
                     "🎓 Exam day strategy with time allocation",
-                    "⏱️ Live Pomodoro timer with YouTube integration",
+                    "⏱️ Live Pomodoro timer",
                     "💪 Motivational insights based on your progress",
                 ],
                 icon="🎓"
@@ -608,18 +641,17 @@ def main():
             )
         else:
             st.info("⏳ Tracker initializing... Please refresh the page.")
-    
-    with tab9:  # Competitive Intelligence
-        _attempts9 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts9 == 0:
+
+    with tab7:  # Competitive Intelligence
+        _attempts7 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
+        if _attempts7 == 0:
             render_empty_state(
                 "Competitive Intelligence",
                 [
                     "🏅 Your percentile rank among all students",
-                    "🎯 ML-predicted exam rank with confidence interval",
+                    "🎯 ML-predicted exam rank",
                     "📊 Topic-wise benchmarking vs top performers",
                     "⚡ Strategic weakest-link analysis",
-                    "📈 Success probability for different cutoffs",
                 ],
                 icon="🏆"
             )
@@ -632,28 +664,15 @@ def main():
         else:
             st.info("⏳ Tracker initializing... Please refresh the page.")
 
-    # ⭐ FEATURE 4: Daily Review Queue tab
-    with tab10:
-        _attempts10 = get_user_attempt_count(st.session_state.db, st.session_state.user_id)
-        if _attempts10 == 0:
-            render_empty_state(
-                "Daily Review Queue",
-                [
-                    "📅 Today's personalized list of topics to revise",
-                    "🔴 Topics you're about to forget (review NOW)",
-                    "🟡 Topics declining in mastery (review soon)",
-                    "🟢 Topics you're solid on (no action needed)",
-                    "⏰ Powered by forgetting curve math — never lose what you learned",
-                ],
-                icon="📅"
-            )
-        else:
-            st.markdown("## 📅 Daily Review Queue")
-            st.caption("Your personalised study plan for today — driven by the forgetting curve")
-            dkt_label = "DKT (Deep Knowledge Tracing)" if DKT_AVAILABLE else "BKT (Bayesian)"
-            st.info(f"🧠 Powered by {dkt_label} — reviews topics at the mathematically optimal moment")
+    # Daily Review Queue
+    with tab8:
+        st.markdown("## 📅 Daily Review Queue")
+        st.caption("Your personalised study plan for today — driven by the forgetting curve")
 
-        if _attempts10 > 0 and st.session_state.get('bkt_tracker') and st.session_state.get('user_id'):
+        dkt_label = "DKT (Deep Knowledge Tracing)" if DKT_AVAILABLE else "BKT (Bayesian)"
+        st.info(f"🧠 Powered by {dkt_label} — reviews topics at the mathematically optimal moment")
+
+        if st.session_state.get('bkt_tracker') and st.session_state.get('user_id'):
             if METACOG_AVAILABLE:
                 def on_practice(subject, topic):
                     st.session_state.current_subject = subject
@@ -1138,6 +1157,7 @@ def render_mcq_practice(llm, topic, difficulty, count, subject):
             weak = st.session_state.db.get_weak_topics(st.session_state.user_id, 3)
             weak_areas = [w[1] for w in weak] if weak else None
             
+            st.session_state['practice_topic'] = topic  # for prerequisite engine
             questions = llm.generate_adaptive_questions(topic, difficulty, count, weak_areas)
         
         if questions:
@@ -1248,6 +1268,26 @@ def render_mcq_practice(llm, topic, difficulty, count, subject):
         else:
             st.success("🌟 No pattern errors detected! Great job!")
         
+        # ⭐ PREREQUISITE ENGINE — check for root-cause topic gaps
+        if PREREQ_AVAILABLE and st.session_state.get('user_id') and st.session_state.get('db'):
+            current_topic = st.session_state.get('practice_topic', '')
+            dismissed     = st.session_state.get('prereq_intervention_dismissed', '')
+            if current_topic and current_topic != dismissed:
+                try:
+                    engine       = PrerequisiteEngine(st.session_state.db)
+                    intervention = engine.check_intervention_needed(
+                        st.session_state.user_id, current_topic
+                    )
+                    if intervention:
+                        def on_prereq_fix(subject, topic):
+                            st.session_state.practice_subject = subject
+                            st.session_state['prereq_topic_to_fix'] = topic
+                            st.session_state.generated_questions = []
+                            st.session_state.quiz_submitted = False
+                        render_prerequisite_intervention(intervention, on_fix_click=on_prereq_fix)
+                except Exception:
+                    pass
+
         # 🔥 TIME-PRESSURE INTELLIGENCE
         st.divider()
         st.markdown("### ⏱️ Time-Pressure Intelligence")
