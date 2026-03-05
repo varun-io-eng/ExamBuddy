@@ -292,6 +292,115 @@ KNOWLEDGE_BASE = [
             "Turnaround = completion - arrival."
         )
     },
+
+    # ── Mathematics — Probability & Statistics ───────────────────────────
+    {
+        "id": "math_probability_1",
+        "source": "RD Sharma Probability Ch.31",
+        "subject": "Mathematics",
+        "topic": "Probability",
+        "content": (
+            "Probability of event A: P(A) = favourable outcomes / total outcomes. "
+            "Addition rule: P(A∪B) = P(A) + P(B) - P(A∩B). "
+            "Mutually exclusive events: P(A∪B) = P(A) + P(B). "
+            "Complement: P(A') = 1 - P(A). "
+            "JEE tip: always check if events are mutually exclusive before applying addition rule."
+        )
+    },
+    {
+        "id": "math_probability_2",
+        "source": "RD Sharma Probability Ch.32",
+        "subject": "Mathematics",
+        "topic": "Conditional Probability",
+        "content": (
+            "Conditional probability: P(A|B) = P(A∩B) / P(B). "
+            "Multiplication rule: P(A∩B) = P(A) × P(B|A). "
+            "Independent events: P(A∩B) = P(A) × P(B), so P(A|B) = P(A). "
+            "Bayes theorem: P(A|B) = P(B|A)·P(A) / P(B). "
+            "JEE insight: Bayes theorem is used for reverse conditional problems — "
+            "given the outcome, find the cause probability."
+        )
+    },
+    {
+        "id": "math_probability_3",
+        "source": "RD Sharma Probability Ch.33",
+        "subject": "Mathematics",
+        "topic": "Binomial Distribution",
+        "content": (
+            "Binomial distribution: P(X=r) = nCr × p^r × (1-p)^(n-r). "
+            "Mean = np, Variance = np(1-p), Standard deviation = sqrt(np(1-p)). "
+            "Conditions: fixed n trials, each trial is independent, only 2 outcomes (success/failure). "
+            "JEE tip: for large n and small p, binomial approaches Poisson distribution."
+        )
+    },
+    {
+        "id": "math_permcomb",
+        "source": "RD Sharma Permutations Ch.16",
+        "subject": "Mathematics",
+        "topic": "Permutation and Combination",
+        "content": (
+            "Permutation (order matters): nPr = n! / (n-r)!. "
+            "Combination (order doesn't matter): nCr = n! / (r!(n-r)!). "
+            "nCr = nC(n-r). nC0 = nCn = 1. "
+            "Circular permutation of n objects: (n-1)!. "
+            "JEE tip: identify if order matters. 'Arrangements' → permutation. 'Selections/groups' → combination."
+        )
+    },
+    {
+        "id": "math_statistics",
+        "source": "NCERT Mathematics Statistics Ch.15",
+        "subject": "Mathematics",
+        "topic": "Statistics",
+        "content": (
+            "Mean = sum of all values / number of values. "
+            "Median = middle value when sorted; for even n, average of two middle values. "
+            "Mode = most frequently occurring value. "
+            "Variance = average of squared deviations from mean. "
+            "Standard deviation = sqrt(variance). "
+            "JEE insight: for grouped data, use step deviation method to simplify calculation."
+        )
+    },
+    {
+        "id": "math_sequences",
+        "source": "RD Sharma Sequences Ch.19",
+        "subject": "Mathematics",
+        "topic": "Sequences and Series",
+        "content": (
+            "AP: nth term = a + (n-1)d. Sum = n/2 × (2a + (n-1)d). "
+            "GP: nth term = ar^(n-1). Sum = a(1-r^n)/(1-r) for r≠1. "
+            "Sum of infinite GP = a/(1-r) for |r| < 1. "
+            "Harmonic Progression: reciprocals form an AP. "
+            "JEE tip: AM ≥ GM ≥ HM for positive numbers. Equality when all numbers are equal."
+        )
+    },
+    {
+        "id": "math_sets_relations",
+        "source": "NCERT Mathematics Sets Ch.1",
+        "subject": "Mathematics",
+        "topic": "Sets and Relations",
+        "content": (
+            "Set operations: A∪B (union), A∩B (intersection), A-B (difference), A' (complement). "
+            "De Morgan's laws: (A∪B)' = A'∩B', (A∩B)' = A'∪B'. "
+            "Number of subsets of a set with n elements = 2^n. "
+            "Relation R is an equivalence relation if reflexive, symmetric, and transitive. "
+            "JEE insight: bijective function = one-one AND onto. Check both conditions separately."
+        )
+    },
+
+    # ── Mathematics — Algebra & Complex Numbers ──────────────────────────
+    {
+        "id": "math_complex",
+        "source": "RD Sharma Complex Numbers Ch.13",
+        "subject": "Mathematics",
+        "topic": "Complex Numbers",
+        "content": (
+            "Complex number z = a + ib. Modulus |z| = sqrt(a²+b²). Argument = arctan(b/a). "
+            "Conjugate of z: z̄ = a - ib. z × z̄ = |z|². "
+            "Euler's form: z = |z| × e^(iθ). De Moivre: (cosθ + i sinθ)^n = cos(nθ) + i sin(nθ). "
+            "Cube roots of unity: 1, ω, ω² where ω = e^(2πi/3). 1 + ω + ω² = 0. "
+            "JEE tip: for locus problems, write z = x + iy and find the equation in x and y."
+        )
+    },
 ]
 
 
@@ -553,66 +662,133 @@ Instructions:
     @staticmethod
     def detect_subject(question: str) -> str:
         """
-        Auto-detect subject from question text so RAG retrieves
-        from the correct book (Maths doubt → RD Sharma, not HC Verma).
+        Detect subject from question text so RAG fetches the right book.
+        Maths doubt  → RD Sharma / SL Loney (NOT HC Verma)
+        Physics doubt → HC Verma
+        Chem doubt   → NCERT Chemistry / Morrison Boyd
+        Uses SCORED matching so the strongest signal wins, not first match.
         """
+        import re
         q = question.lower()
-        
-        # Physics keywords
-        if any(k in q for k in [
-            'velocity', 'acceleration', 'force', 'newton', 'energy', 'work',
-            'momentum', 'gravity', 'electric', 'magnetic', 'wave', 'optics',
-            'thermodynamics', 'heat', 'capacitor', 'resistor', 'circuit',
-            'projectile', 'torque', 'friction', 'potential', 'current',
-            'photon', 'electron', 'nucleus', 'radioactive', 'lens', 'mirror'
-        ]):
-            return 'Physics'
-        
-        # Chemistry keywords
-        if any(k in q for k in [
-            'molecule', 'atom', 'bond', 'reaction', 'acid', 'base', 'salt',
-            'organic', 'inorganic', 'equilibrium', 'oxidation', 'reduction',
-            'mole', 'molarity', 'enthalpy', 'entropy', 'catalyst', 'polymer',
-            'hydrocarbon', 'alcohol', 'aldehyde', 'ketone', 'amine', 'benzene',
-            'electrolysis', 'electrode', 'periodic', 'valence', 'hybridisation',
-            'isomer', 'ph', 'buffer', 'titration', 'precipitation'
-        ]):
-            return 'Chemistry'
-        
-        # Mathematics keywords
-        if any(k in q for k in [
-            'integral', 'derivative', 'differentiate', 'integrate', 'limit',
-            'matrix', 'determinant', 'vector', 'probability', 'permutation',
-            'combination', 'binomial', 'trigonometry', 'sine', 'cosine', 'tangent',
-            'logarithm', 'complex number', 'quadratic', 'polynomial', 'sequence',
-            'series', 'arithmetic', 'geometric', 'parabola', 'ellipse', 'hyperbola',
-            'circle', 'straight line', 'angle', 'triangle', 'coordinate', 'calculus',
-            'function', 'domain', 'range', 'continuity', 'differentiability'
-        ]):
-            return 'Mathematics'
-        
-        # Biology keywords
-        if any(k in q for k in [
-            'cell', 'tissue', 'organ', 'dna', 'rna', 'protein', 'enzyme',
-            'photosynthesis', 'respiration', 'mitosis', 'meiosis', 'genetics',
-            'chromosome', 'mutation', 'evolution', 'ecosystem', 'biodiversity',
-            'hormone', 'nervous', 'digestion', 'circulation', 'excretion',
-            'reproduction', 'plant', 'animal', 'bacteria', 'virus', 'fungi'
-        ]):
-            return 'Biology'
-        
-        # Computer Science keywords
-        if any(k in q for k in [
-            'algorithm', 'array', 'linked list', 'tree', 'graph', 'stack',
-            'queue', 'sorting', 'searching', 'dynamic programming', 'recursion',
-            'complexity', 'time complexity', 'space complexity', 'binary',
-            'database', 'sql', 'operating system', 'process', 'thread',
-            'network', 'protocol', 'compiler', 'pointer', 'memory',
-            'hash', 'heap', 'bfs', 'dfs', 'dijkstra', 'big o'
-        ]):
-            return 'Computer Science'
-        
-        return None  # Unknown — will search across all subjects
+        # Normalize: remove punctuation noise
+        q = re.sub(r"[^a-z0-9 ]", " ", q)
+
+        scores = {
+            'Mathematics':      0,
+            'Physics':          0,
+            'Chemistry':        0,
+            'Biology':          0,
+            'Computer Science': 0,
+        }
+
+        # ── Mathematics (high-weight unique terms) ───────────────────────
+        math_keywords = {
+            # Probability & Statistics — the most commonly misrouted topic
+            'probability': 5, 'bayes': 5, 'conditional probability': 5,
+            'random variable': 5, 'expectation': 4, 'variance': 4,
+            'standard deviation': 4, 'binomial distribution': 5,
+            'poisson': 5, 'normal distribution': 5, 'permutation': 5,
+            'combination': 5, 'factorial': 4, 'sample space': 5,
+            'event': 3, 'mutually exclusive': 5,
+            # Calculus
+            'integral': 5, 'integrate': 5, 'differentiate': 5,
+            'derivative': 5, 'limit': 4, 'continuity': 4,
+            'differentiability': 5, 'calculus': 5, 'rolle': 5,
+            'lagrange': 4, 'taylor': 4, 'maclaurin': 5,
+            # Algebra & misc
+            'matrix': 5, 'determinant': 5, 'quadratic': 4,
+            'polynomial': 4, 'sequence': 3, 'arithmetic progression': 5,
+            'geometric progression': 5, 'binomial theorem': 5,
+            'complex number': 5, 'logarithm': 4, 'log base': 5,
+            # Trigonometry
+            'trigonometry': 5, 'sin': 2, 'cos': 2, 'tan': 2,
+            'sine': 4, 'cosine': 4, 'tangent': 4, 'cotangent': 5,
+            'cosec': 5, 'sec ': 3, 'inverse trig': 5,
+            # Geometry
+            'parabola': 5, 'ellipse': 5, 'hyperbola': 5,
+            'coordinate geometry': 5, 'straight line': 4,
+            'circle': 3, 'conic': 5, 'vector': 3,
+        }
+
+        # ── Physics ───────────────────────────────────────────────────────
+        physics_keywords = {
+            'velocity': 5, 'acceleration': 5, 'newton': 5,
+            'force': 4, 'momentum': 5, 'projectile': 5,
+            'circular motion': 5, 'gravitation': 5, 'torque': 5,
+            'work energy': 5, 'kinetic energy': 5, 'potential energy': 5,
+            'simple harmonic': 5, 'wave': 4, 'sound': 3,
+            'optics': 5, 'refraction': 5, 'reflection': 4, 'lens': 4,
+            'mirror': 4, 'electric field': 5, 'magnetic field': 5,
+            'capacitor': 5, 'resistor': 5, 'inductor': 5,
+            'thermodynamics': 5, 'heat': 3, 'temperature': 3,
+            'photon': 5, 'electron': 4, 'nucleus': 4,
+            'radioactive': 5, 'friction': 4, 'viscosity': 5,
+            'surface tension': 5, 'pressure': 3, 'buoyancy': 5,
+        }
+
+        # ── Chemistry ─────────────────────────────────────────────────────
+        chemistry_keywords = {
+            'molecule': 4, 'atom': 3, 'bond': 3, 'ionic': 4,
+            'covalent': 5, 'reaction': 3, 'acid': 4, 'base': 3,
+            'salt': 3, 'organic': 5, 'inorganic': 5,
+            'oxidation': 5, 'reduction': 4, 'redox': 5,
+            'mole': 4, 'molarity': 5, 'molality': 5,
+            'enthalpy': 5, 'entropy': 5, 'gibbs': 5,
+            'catalyst': 5, 'enzyme': 3, 'polymer': 5,
+            'hydrocarbon': 5, 'alkane': 5, 'alkene': 5, 'alkyne': 5,
+            'alcohol': 4, 'aldehyde': 5, 'ketone': 5, 'amine': 5,
+            'benzene': 5, 'aromatic': 5, 'electrolysis': 5,
+            'electrode': 4, 'periodic table': 5, 'valence': 4,
+            'hybridisation': 5, 'hybridization': 5, 'isomer': 5,
+            'ph': 3, 'buffer': 4, 'titration': 5,
+            'equilibrium constant': 5, 'le chatelier': 5,
+        }
+
+        # ── Biology ───────────────────────────────────────────────────────
+        biology_keywords = {
+            'cell': 3, 'tissue': 4, 'organ': 3,
+            'dna': 5, 'rna': 5, 'protein': 4, 'enzyme': 4,
+            'photosynthesis': 5, 'respiration': 4, 'mitosis': 5,
+            'meiosis': 5, 'genetics': 5, 'chromosome': 5,
+            'mutation': 4, 'evolution': 4, 'ecosystem': 5,
+            'biodiversity': 5, 'hormone': 4, 'nervous system': 5,
+            'digestion': 4, 'circulation': 4, 'excretion': 4,
+            'reproduction': 4, 'bacteria': 4, 'virus': 4, 'fungi': 4,
+        }
+
+        # ── Computer Science ──────────────────────────────────────────────
+        cs_keywords = {
+            'algorithm': 5, 'array': 4, 'linked list': 5,
+            'tree': 4, 'graph': 4, 'stack': 5, 'queue': 4,
+            'sorting': 5, 'searching': 4, 'dynamic programming': 5,
+            'recursion': 5, 'time complexity': 5, 'space complexity': 5,
+            'big o': 5, 'binary search': 5, 'hash': 4, 'heap': 5,
+            'bfs': 5, 'dfs': 5, 'dijkstra': 5, 'database': 4,
+            'sql': 5, 'operating system': 5, 'process': 3,
+            'thread': 4, 'compiler': 5, 'pointer': 4, 'memory': 3,
+        }
+
+        all_kw = [
+            ('Mathematics',      math_keywords),
+            ('Physics',          physics_keywords),
+            ('Chemistry',        chemistry_keywords),
+            ('Biology',          biology_keywords),
+            ('Computer Science', cs_keywords),
+        ]
+
+        for subj, kw_dict in all_kw:
+            for kw, weight in kw_dict.items():
+                if kw in q:
+                    scores[subj] += weight
+
+        best_subject = max(scores, key=scores.get)
+        best_score   = scores[best_subject]
+
+        # Only return a subject if we have confident signal (score >= 3)
+        if best_score >= 3:
+            return best_subject
+
+        return None  # Genuinely ambiguous — search all subjects
 
     def get_citation_context(self, question: str, subject: str = None) -> dict:
         """

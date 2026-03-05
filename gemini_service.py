@@ -529,18 +529,27 @@ Generate exactly {count} questions. Return ONLY the JSON array, nothing else."""
         if RAG_AVAILABLE:
             try:
                 retriever = get_retriever()
-                student_ctx = ""
-                if hasattr(st.session_state, 'student_context') and st.session_state.student_context:
-                    student_ctx = st.session_state.student_context.get('context_string', '')
 
-                # Auto-detect subject from question text if not explicitly set
-                # This ensures Maths doubts use RD Sharma, Physics uses HC Verma, etc.
-                effective_subject = subject
-                if not effective_subject or effective_subject.lower() in ('general', 'none', ''):
-                    effective_subject = retriever.detect_subject(question)
+                # ── Subject resolution (3-layer priority) ─────────────────
+                # 1. Auto-detect from question text (most reliable)
+                # 2. Use explicitly passed subject if detection fails
+                # 3. Fall back to General (search all subjects)
+                detected = retriever.detect_subject(question)
+                effective_subject = detected or subject or None
+
+                # If still pointing to wrong subject (e.g. session was Physics
+                # but student asked a Maths doubt), detected overrides it
+                if detected and subject and detected != subject:
+                    # Detection wins — question text is ground truth
+                    effective_subject = detected
 
                 citation_info = retriever.get_citation_context(question, subject=effective_subject)
                 chunks = citation_info.get('chunks', [])
+
+                # If subject-filtered search returned nothing, try without filter
+                if not chunks and effective_subject:
+                    citation_info = retriever.get_citation_context(question, subject=None)
+                    chunks = citation_info.get('chunks', [])
 
                 if chunks:
                     rag_context_block = "\n\n".join([
@@ -551,8 +560,8 @@ Generate exactly {count} questions. Return ONLY the JSON array, nothing else."""
                         c['source'] for c in chunks if c['score'] > 0.05
                     )
                     rag_used = True
-
-                    # Store in session state so UI can show "View Sources"
+                    # Update effective_subject for prompt building below
+                    subject = effective_subject or subject
                     st.session_state['last_doubt_sources'] = chunks
             except Exception:
                 rag_used = False
